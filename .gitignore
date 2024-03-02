@@ -1,0 +1,4 @@
+MODULE.bazel.lock
+.clwb
+.idea
+/bazel-*
