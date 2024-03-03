@@ -5,6 +5,7 @@ cc_binary(
         "config",
         "//utils:io_utils",
         "//utils:logger",
+        "@parlaylib//parlay:parallel",
     ],
 )
 

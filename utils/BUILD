@@ -9,8 +9,23 @@ cc_library(
 )
 
 cc_library(
+    name = "file_utils",
+    srcs = ["file_utils.cpp"],
+    hdrs = ["file_utils.h"],
+)
+
+cc_library(
     name = "unordered_file_writer",
     srcs = ["unordered_file_writer.h"],
+    deps = [
+        ":file_utils",
+        ":logger",
+    ],
+)
+
+cc_library(
+    name = "unordered_file_reader",
+    srcs = ["unordered_file_reader.h"],
     deps = [":logger"],
 )
 
@@ -19,5 +34,8 @@ cc_library(
     srcs = [],
     linkopts = ["-luring"],
     visibility = ["//visibility:public"],
-    deps = [":unordered_file_writer"],
+    deps = [
+        ":unordered_file_reader",
+        ":unordered_file_writer",
+    ],
 )
