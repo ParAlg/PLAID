@@ -1,6 +1,7 @@
 cc_library(
     name = "logger",
-    srcs = ["logger.h"],
+    srcs = ["logger.cpp"],
+    hdrs = ["logger.h"],
     visibility = ["//visibility:public"],
     deps = [
         "@com_google_absl//absl/log",
@@ -9,9 +10,21 @@ cc_library(
 )
 
 cc_library(
+    name = "random_number_generator",
+    srcs = ["random_number_generator.cpp"],
+    hdrs = ["random_number_generator.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":io_utils",
+        "@parlaylib//parlay:parallel",
+    ],
+)
+
+cc_library(
     name = "file_utils",
     srcs = ["file_utils.cpp"],
     hdrs = ["file_utils.h"],
+    deps = ["//:config"],
 )
 
 cc_library(

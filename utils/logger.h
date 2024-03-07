@@ -12,15 +12,10 @@
 
 #define SYSCALL(expr) do { \
     int result = (expr);   \
-    if (__builtin_expect(result < 0, 0)) LOG(ERROR) << "System call error: " << std::strerror(errno); \
+    if (__builtin_expect(result < 0, 0)) LOG(ERROR) << "System call returned " << result << ": " \
+    << std::strerror(errno); \
 } while(0)
 
-void InitLogger() {
-    static bool initialized = false;
-    if (!initialized) {
-        initialized = true;
-        absl::InitializeLog();
-    }
-}
+void InitLogger();
 
 #endif //SORTING_LOGGER_H

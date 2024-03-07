@@ -112,7 +112,7 @@ private:
         }
     };
 
-    static void RunFileReaderWorker(UnorderedFileWriter *writer, const size_t buffer_size) {
+    static void RunFileWriterWorker(UnorderedFileWriter *writer, const size_t buffer_size) {
         struct io_uring ring;
         SYSCALL(io_uring_queue_init(buffer_size, &ring, IORING_SETUP_SQPOLL));
         size_t file_counter = 0, completed_files = 0, busy_files = 0;
@@ -130,7 +130,7 @@ private:
                 int wait_result = io_uring_wait_cqe_timeout(&ring, &completion_queue_entry, &wait_time);
                 if (wait_result == 0) {
                     SYSCALL(completion_queue_entry->res);
-                    auto *file = (OpenedFile *) completion_queue_entry->user_data;
+                    auto *file = (OpenedFile *) io_uring_cqe_get_data(completion_queue_entry);
                     busy_files--;
                     if (file->bytes_written >= FILE_SIZE) {
                         delete file;
@@ -169,7 +169,7 @@ private:
                 file->bytes_written += num_bytes;
                 io_uring_prep_write(submission_queue_entry, file->fd, file->data.get(), num_bytes, 0);
                 io_uring_sqe_set_data(submission_queue_entry, file);
-                io_uring_submit(&ring);
+                SYSCALL(io_uring_submit(&ring));
                 busy_files++;
             }
         }
