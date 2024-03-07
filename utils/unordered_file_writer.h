@@ -39,6 +39,15 @@ public:
     }
 
     void Push(std::shared_ptr<T[]> data, size_t size) {
+        // FIXME: need to align writes to 512 byte blocks, otherwise we won't be able to use O_DIRECT
+        //   short term solution is to force multiples of 512 and throw an error otherwise;
+        //   long term solution is to use ftruncate to shorten the file afterwards
+        if (size * sizeof(T) % 4096 != 0) {
+            [[unlikely]]
+            LOG(ERROR)
+                << "Size (in bytes) must be aligned to the size of a page in O_DIRECT mode. "
+                << "Actual size: " << size * sizeof(T);
+        }
         std::lock_guard<std::mutex> guard(wait_queue_lock);
         wait_queue.emplace_back(std::move(data), size);
         wait_queue_cond.notify_one();

@@ -26,8 +26,8 @@ public:
                                  int file_count = -1,
                                  size_t buffer_queue_size = 50,
                                  int io_uring_buffer_size = IO_URING_BUFFER_SIZE) : buffer_queue_size(buffer_queue_size) {
-        FindFiles(prefix, file_count);
-        worker_thread = std::make_unique<std::thread>(RunFileReaderWorker, this, array_size, io_uring_buffer_size);
+        auto files = FindFiles(prefix, file_count);
+        worker_thread = std::make_unique<std::thread>(RunFileReaderWorker, this, files, array_size, io_uring_buffer_size);
     }
 
     ~UnorderedFileReader() {
@@ -72,7 +72,7 @@ public:
     }
 
     /**
-     * Block until file writer finishes and return the number of files
+     * Block until file reader finishes and return the number of files
      * @return
      */
     int Wait() {
@@ -96,7 +96,7 @@ private:
         size_t file_size;
         T* data;
 
-        OpenedFile(const std::string &&name, size_t file_size) : file_size(file_size) {
+        OpenedFile(const std::string& name, size_t file_size) : file_size(file_size) {
             fd = open(name.c_str(), O_DIRECT | O_RDONLY);
             SYSCALL(fd);
         }
@@ -126,10 +126,10 @@ private:
                     SYSCALL(completion_queue_entry->res);
                     auto *file = (OpenedFile *) completion_queue_entry->user_data;
                     busy_files--;
-                    reader->Push(file->data, file->current_read_size);
+                    reader->Push(file->data, file->current_read_size / sizeof(T));
                     file->data = nullptr;
                     file->bytes_read += file->current_read_size;
-                    if (file->bytes_read == file->file_size) {
+                    if (file->bytes_read >= file->file_size) {
                         delete file;
                         completed_files++;
                     } else {
@@ -151,7 +151,7 @@ private:
                         available_files.pop_back();
                         free_files.push_back(new OpenedFile(file_name, file_size));
                         // if # files is less than # SSDs, then read them all to avoid waiting on a few files in the end
-                    } while(available_files.size() <= SSD_COUNT);
+                    } while(available_files.size() <= SSD_COUNT && !available_files.empty());
                 }
 
                 struct io_uring_sqe *submission_queue_entry;
@@ -168,14 +168,15 @@ private:
                 file->current_read_size = read_size;
                 file->data = new T[read_size / sizeof(T)];
 
-                io_uring_prep_read(submission_queue_entry, file->fd, file->data.get(), read_size, 0);
+                io_uring_prep_read(submission_queue_entry, file->fd, file->data, read_size, 0);
                 io_uring_sqe_set_data(submission_queue_entry, file);
                 io_uring_submit(&ring);
                 busy_files++;
             }
         }
         io_uring_queue_exit(&ring);
-        DLOG(INFO) << "FileWriter worker thread exited";
+        reader->Close();
+        DLOG(INFO) << "FileReader worker thread exited";
     }
 };
 

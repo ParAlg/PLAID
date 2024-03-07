@@ -4,7 +4,8 @@
 
 int main() {
     InitLogger();
-    GenerateUniformRandomNumbers("numbers", 1 << 25);
+    // GenerateUniformRandomNumbers("numbers", 1 << 20);
+    GenerateUniformRandomNumbers<int>("numbers", 128, 128);
     std::cout << "[1]    114514 Segmentation fault (core dumped)" << std::endl;
     return 0;
 }
