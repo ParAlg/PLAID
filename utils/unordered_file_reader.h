@@ -116,7 +116,7 @@ private:
         size_t completed_files = 0, busy_files = 0;
         std::deque<OpenedFile *> free_files;
 
-        while (completed_files < total_files) {
+        while (completed_files < total_files && reader->is_open) {
             // reap io_uring result
             while (busy_files > 0) {
                 struct io_uring_cqe *completion_queue_entry;
@@ -168,7 +168,7 @@ private:
                 file->current_read_size = read_size;
                 file->data = new T[read_size / sizeof(T)];
 
-                io_uring_prep_read(submission_queue_entry, file->fd, file->data, read_size, 0);
+                io_uring_prep_read(submission_queue_entry, file->fd, file->data, read_size, file->bytes_read);
                 io_uring_sqe_set_data(submission_queue_entry, file);
                 io_uring_submit(&ring);
                 busy_files++;

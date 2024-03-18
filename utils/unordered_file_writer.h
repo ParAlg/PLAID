@@ -41,7 +41,8 @@ public:
     void Push(std::shared_ptr<T[]> data, size_t size) {
         // FIXME: need to align writes to 512 byte blocks, otherwise we won't be able to use O_DIRECT
         //   short term solution is to force multiples of 512 and throw an error otherwise;
-        //   long term solution is to use ftruncate to shorten the file afterwards
+        //   alternatively, use ftruncate to change the size of the file
+        //   long term solution is to store the size of the last section in the end of the file (i.e. last 8 bytes)
         if (size * sizeof(T) % 4096 != 0) {
             [[unlikely]]
             LOG(ERROR)
