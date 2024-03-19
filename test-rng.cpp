@@ -14,7 +14,7 @@ int main() {
     std::set<int> writer_values;
     for (auto [ptr, size] :writer_result) {
         for (size_t i = 0; i < size; i++) {
-            writer_values.insert(ptr[i]);
+            writer_values.insert(ptr.get()[i]);
         }
     }
     auto reader = std::make_unique<UnorderedFileReader<int>>("numbers", 1 << 15);
