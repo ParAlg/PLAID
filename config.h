@@ -17,7 +17,7 @@ constexpr size_t FILE_SIZE = 1 << 30;
 
 constexpr size_t IO_VECTOR_SIZE = 1024;
 
-constexpr size_t DISK_BLOCK_SIZE = 4096;
+constexpr size_t O_DIRECT_MULTIPLE = 4096;
 constexpr size_t IO_URING_BUFFER_SIZE = 60;
 
 #endif //SORTING_CONFIG_H

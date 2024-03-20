@@ -43,7 +43,7 @@ public:
         //   short term solution is to force multiples of 512 and throw an error otherwise;
         //   alternatively, use ftruncate to change the size of the file
         //   long term solution is to store the size of the last section in the end of the file (i.e. last 8 bytes)
-        if (size * sizeof(T) % 4096 != 0) {
+        if (size * sizeof(T) % O_DIRECT_MULTIPLE != 0) {
             [[unlikely]]
             LOG(ERROR)
                 << "Size (in bytes) must be aligned to the size of a page in O_DIRECT mode. "
