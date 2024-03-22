@@ -26,17 +26,24 @@ class OrderedFileWriter {
     struct Bucket;
     struct IOVectorRequest;
 public:
-    OrderedFileWriter(std::string &prefix, size_t num_buckets, size_t flush_threshold) :
-            num_buckets(num_buckets), flush_threshold(flush_threshold) {
-        for (size_t i = 0; i < num_buckets; i++) {
-            auto f_name = GetFileName(prefix, i);
-            buckets.emplace_back(f_name, 3);
-            result_files.emplace_back(f_name, 0, 0);
-        }
+    OrderedFileWriter() = default;
+
+    OrderedFileWriter(std::string &prefix, size_t num_buckets, size_t flush_threshold) {
+        Initialize(prefix, num_buckets, flush_threshold);
     }
 
     ~OrderedFileWriter() {
         FlushRemainingPointers();
+    }
+
+    void Initialize(std::string &prefix, size_t bucket_count, size_t file_flush_threshold) {
+        this->num_buckets = bucket_count;
+        this->flush_threshold = file_flush_threshold;
+        for (size_t i = 0; i < bucket_count; i++) {
+            auto f_name = GetFileName(prefix, i);
+            buckets.emplace_back(f_name, 3);
+            result_files.emplace_back(f_name, 0, 0);
+        }
     }
 
     void FlushRemainingPointers() {
@@ -62,8 +69,8 @@ public:
 
 private:
     bool cleanup_complete = false;
-    size_t num_buckets;
-    size_t flush_threshold;
+    size_t num_buckets = 0;
+    size_t flush_threshold = 0;
     std::vector<FileInfo> result_files;
     std::vector<Bucket> buckets;
 

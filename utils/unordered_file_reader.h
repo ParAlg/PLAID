@@ -21,18 +21,24 @@
 template<typename T>
 class UnorderedFileReader {
 public:
-    explicit UnorderedFileReader(const std::string& prefix,
-                                 size_t array_size,
-                                 int file_count = -1,
-                                 size_t buffer_queue_size = 50,
-                                 int io_uring_buffer_size = IO_URING_BUFFER_SIZE) : buffer_queue_size(buffer_queue_size) {
-        auto files = FindFiles(prefix, file_count);
-        worker_thread = std::make_unique<std::thread>(RunFileReaderWorker, this, files, array_size, io_uring_buffer_size);
+    explicit UnorderedFileReader(size_t buffer_queue_size = 50) : buffer_queue_size(buffer_queue_size) {
     }
 
     ~UnorderedFileReader() {
         is_open = false;
         worker_thread->join();
+    }
+
+    void PrepFiles(std::string prefix) {
+        files = FindFiles(prefix);
+    }
+
+    void PrepFiles(std::vector<FileInfo> file_list) {
+        this->files = file_list;
+    }
+
+    void Start(size_t array_size, size_t io_uring_buffer_size) {
+        worker_thread = std::make_unique<std::thread>(RunFileReaderWorker, this, files, array_size, io_uring_buffer_size);
     }
 
     void Push(T* data, size_t size) {
@@ -82,6 +88,7 @@ public:
 
 private:
     bool is_open = true;
+    std::vector<FileInfo> files;
     size_t num_files = 0, buffer_queue_size;
     std::vector<FileInfo> available_files;
     std::unique_ptr<std::thread> worker_thread;
@@ -147,9 +154,9 @@ private:
                         break;
                     }
                     do {
-                        auto [file_name, file_size] = available_files.back();
+                        auto file_info = available_files.back();
                         available_files.pop_back();
-                        free_files.push_back(new OpenedFile(file_name, file_size));
+                        free_files.push_back(new OpenedFile(file_info.file_name, file_info.file_size));
                         // if # files is less than # SSDs, then read them all to avoid waiting on a few files in the end
                     } while(available_files.size() <= SSD_COUNT && !available_files.empty());
                 }

@@ -76,14 +76,17 @@ private:
     OrderedFileWriter<T> writer;
 
 public:
-    std::vector<FileInfo> Sort(std::vector<std::string> &file_names, const std::string& result_prefix, Comparator comp) {
+
+    std::vector<FileInfo> Sort(std::vector<FileInfo> &input_files, const std::string& result_prefix, Comparator comp) {
         // FIXME: considerations for sample size
         //   (1) samples should ideally fit in L1 cache for maximal binary search efficiency
         //   (2) each bucket should be small enough to fit in main memory; ideally they should be small each that we
         //       can process buckets concurrently to overlap IO and computation
+        reader.PrepFiles(input_files);
         size_t num_samples = 1024;
         size_t flush_threshold = 4 << 20;
-        auto samples = GetSamples(file_names, num_samples);
+        writer.Initialize(result_prefix, num_samples + 1, 1 << 20);
+        auto samples = GetSamples(input_files, num_samples);
         const auto sorted_pivots = parlay::sort(samples, comp);
         parlay::parallel_for(0, THREAD_COUNT, [&](int i) {
             AssignToBucketThread(sorted_pivots, flush_threshold, comp);
@@ -107,6 +110,8 @@ public:
                 SortBucket(file_info, GetFileName(result_prefix, bucket_number), comp);
             }
         });
+
+        return {};
     }
 };
 

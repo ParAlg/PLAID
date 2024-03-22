@@ -26,6 +26,7 @@ cc_library(
     linkopts = ["-luring"],
     visibility = ["//visibility:public"],
     deps = [
+        ":file_info",
         ":ordered_file_writer",
         ":unordered_file_reader",
         ":unordered_file_writer",
@@ -42,7 +43,10 @@ cc_library(
     name = "file_utils",
     srcs = ["file_utils.cpp"],
     hdrs = ["file_utils.h"],
-    deps = ["//:config"],
+    deps = [
+        ":file_info",
+        "//:config",
+    ],
 )
 
 cc_library(

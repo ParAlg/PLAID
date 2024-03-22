@@ -1,6 +1,7 @@
 cc_library(
     name = "sample_sort",
     srcs = ["sample_sort.h"],
+    visibility = ["//visibility:public"],
     deps = [
         "//:config",
         "//utils:io_utils",
