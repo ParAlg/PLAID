@@ -18,6 +18,10 @@ constexpr size_t FILE_SIZE = 1 << 30;
 constexpr size_t IO_VECTOR_SIZE = 1024;
 
 constexpr size_t O_DIRECT_MULTIPLE = 4096;
+// It should never be necessary to change this unless O_DIRECT_MULTIPLE is very large
+constexpr size_t METADATA_SIZE = 2;
 constexpr size_t IO_URING_BUFFER_SIZE = 60;
+
+
 
 #endif //SORTING_CONFIG_H

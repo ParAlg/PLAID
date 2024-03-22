@@ -7,8 +7,10 @@
 
 #include <vector>
 #include <string>
+#include "utils/file_info.h"
 
-typedef std::tuple<std::string, size_t> FileInfo;
 std::vector<FileInfo> FindFiles(const std::string &prefix, bool parallel = false);
+
+std::string GetFileName(const std::string &prefix, size_t file_number);
 
 #endif //SORTING_FILE_UTILS_H

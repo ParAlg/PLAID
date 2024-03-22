@@ -16,9 +16,14 @@ std::vector<FileInfo> FindFiles(const std::string &prefix, bool parallel) {
         for (auto const& dir_entry : directory_iterator{p}) {
             auto path_str = dir_entry.path().string();
             if (path_str.find("/" + prefix) != std::string::npos) {
-                result.emplace_back(path_str, dir_entry.file_size());
+                result.emplace_back(path_str, 0, dir_entry.file_size());
             }
         }
     }
     return result;
+}
+
+std::string GetFileName(const std::string &prefix, size_t file_number) {
+    size_t ssd_number = file_number % SSD_COUNT;
+    return "/mnt/ssd" + std::to_string(ssd_number) + "/" + prefix + std::to_string(file_number);
 }

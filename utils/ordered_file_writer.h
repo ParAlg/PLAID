@@ -14,9 +14,11 @@
 #include <liburing.h>
 
 #include "absl/log/log.h"
+#include "parlay/parallel.h"
 
 #include "utils/logger.h"
 #include "config.h"
+#include "utils/file_info.h"
 
 template<typename T>
 class OrderedFileWriter {
@@ -28,22 +30,40 @@ public:
         for (size_t i = 0; i < num_buckets; i++) {
             auto f_name = prefix + "_" + std::to_string(i);
             buckets.emplace_back(f_name, 3);
-            result_files.push_back(f_name);
+            result_files.emplace_back(f_name, 0, 0);
         }
+    }
+
+    ~OrderedFileWriter() {
+        FlushRemainingPointers();
+    }
+
+    void FlushRemainingPointers() {
+        if (cleanup_complete) {
+            return;
+        }
+        cleanup_complete = true;
+        parlay::parallel_for(0, buckets.size(), [&](size_t i) {
+            buckets[i].FlushRemainingPointers();
+            result_files[i].file_size = buckets[i].file_size;
+            result_files[i].true_size = buckets[i].true_file_size;
+        });
     }
 
     void Write(size_t bucket_number, T *pointer, size_t count) {
         buckets[bucket_number].AddRequest(flush_threshold, pointer, count);
     }
 
-    std::vector<std::string> ReapResult() {
+    std::vector<FileInfo> ReapResult() {
+        FlushRemainingPointers();
         return std::move(result_files);
     }
 
 private:
+    bool cleanup_complete = false;
     size_t num_buckets;
     size_t flush_threshold;
-    std::vector<std::string> result_files;
+    std::vector<FileInfo> result_files;
     std::vector<Bucket> buckets;
 
     struct IOVectorRequest {
@@ -53,10 +73,10 @@ private:
 
         void FreePointers() {
             for (int i = 0; i < iovec_count; i++) {
-                // FIXME: this assumes that the pointer is constructed with a new instead of
+                // FIXME: this assumes that the pointer is constructed with a malloc instead of
                 //   (1) a new T[]
-                //   (2) a malloc/calloc
-                delete (T *) io_vectors[i].iov_base;
+                //   (2) a new T
+                free(io_vectors[i].iov_base);
             }
         }
     };
@@ -72,6 +92,8 @@ private:
         io_uring ring;
         IOVectorRequest *request;
         int current_file;
+        size_t file_size = 0;
+        size_t true_file_size = 0;
         std::vector<IOVectorRequest *> pending_requests;
         std::vector<IOVectorRequest *> completed_requests;
         std::vector<std::pair<T *, size_t>> misaligned_pointers;
@@ -92,6 +114,7 @@ private:
                 [[unlikely]]
                 LOG(ERROR) << "All requests in bucket should be completed by destruction.";
             }
+            SYSCALL(close(current_file));
         }
 
         void ReapRing(long long wait_nanosecond = 0) {
@@ -135,6 +158,7 @@ private:
         }
 
         void FlushRequest() {
+            file_size += request->current_size;
             pending_requests.push_back(request);
             ReapRing();
             SubmitToRing();
@@ -154,6 +178,39 @@ private:
             if (request->current_size >= io_threshold || request->iovec_count >= IO_VECTOR_SIZE) {
                 FlushRequest();
             }
+        }
+
+        void FlushRemainingPointers() {
+            size_t num_pointers = misaligned_pointers.size() + 1;
+            iovec io_vectors[num_pointers];
+            size_t write_size = 0;
+            for (size_t i = 0; i < misaligned_pointers.size(); i++) {
+                auto [pointer, count] = misaligned_pointers[i];
+                size_t pointer_size = count * sizeof(T);
+                write_size += pointer_size;
+                io_vectors[i].iov_base = pointer;
+                io_vectors[i].iov_len = pointer_size;
+            }
+            size_t target_write_size = (write_size / O_DIRECT_MULTIPLE + 1) * O_DIRECT_MULTIPLE;
+            if (target_write_size - write_size < METADATA_SIZE) {
+                target_write_size += O_DIRECT_MULTIPLE;
+            }
+            size_t byte_diff = target_write_size - write_size;
+
+            // set up padding at end of file to align with target write size
+            int8_t end_file_padding[byte_diff];
+            *(uint16_t*)(&end_file_padding[byte_diff - METADATA_SIZE]) = (uint16_t)byte_diff;
+            io_vectors[num_pointers - 1].iov_base = end_file_padding;
+            io_vectors[num_pointers - 1].iov_len = byte_diff;
+
+            writev(current_file, io_vectors, (int)num_pointers);
+
+            for (size_t i = 0 ; i < num_pointers - 1; i++) {
+                free(io_vectors[i].iov_base);
+            }
+
+            true_file_size = file_size + write_size;
+            file_size += target_write_size;
         }
     };
 };

@@ -33,6 +33,12 @@ cc_library(
 )
 
 cc_library(
+    name = "file_info",
+    srcs = ["file_info.h"],
+    deps = [],
+)
+
+cc_library(
     name = "file_utils",
     srcs = ["file_utils.cpp"],
     hdrs = ["file_utils.h"],
@@ -58,7 +64,9 @@ cc_library(
     name = "ordered_file_writer",
     srcs = ["ordered_file_writer.h"],
     deps = [
+        ":file_info",
         ":logger",
         "//:config",
+        "@parlaylib//parlay:primitives",
     ],
 )

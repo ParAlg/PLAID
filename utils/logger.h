@@ -8,7 +8,6 @@
 #include <cerrno>
 #include <cstring>
 #include "absl/log/log.h"
-#include "absl/log/initialize.h"
 
 #define SYSCALL(expr) do { \
     int result = (expr);   \
