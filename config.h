@@ -11,7 +11,10 @@ constexpr size_t MAIN_MEMORY_SIZE = 400ULL * (1 << 30);
 
 constexpr size_t THREAD_COUNT = 128;
 
+// number of SSD directories in the file system
 constexpr size_t SSD_COUNT= 30;
+// number of SSDs that can be utilized in parallel; this is different from SSD_COUNT if RAID is used
+constexpr size_t SSD_PARALLELISM = SSD_COUNT;
 // (advisory) size of a single file, may go a little higher in practice
 constexpr size_t FILE_SIZE = 1 << 30;
 

@@ -27,7 +27,7 @@ private:
         return {};
     }
 
-    void SampleSortThread(parlay::sequence<T> samples, size_t flush_threshold, Comparator comp) {
+    void AssignToBucketThread(parlay::sequence<T> samples, size_t flush_threshold, Comparator comp) {
         // reads from the reader and put result into a thread-local buffer; send to writer when buffer is full
         size_t num_buckets = samples.size() + 1;
         size_t buffer_count = flush_threshold / sizeof(T);
@@ -86,7 +86,7 @@ public:
         auto samples = GetSamples(file_names, num_samples);
         const auto sorted_pivots = parlay::sort(samples, comp);
         parlay::parallel_for(0, THREAD_COUNT, [&](int i) {
-            SampleSortThread(sorted_pivots, flush_threshold, comp);
+            AssignToBucketThread(sorted_pivots, flush_threshold, comp);
         });
         // retrieve buckets from writer
         auto bucket_list = writer.ReapResult();

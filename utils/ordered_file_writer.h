@@ -19,6 +19,7 @@
 #include "utils/logger.h"
 #include "config.h"
 #include "utils/file_info.h"
+#include "utils/file_utils.h"
 
 template<typename T>
 class OrderedFileWriter {
@@ -28,7 +29,7 @@ public:
     OrderedFileWriter(std::string &prefix, size_t num_buckets, size_t flush_threshold) :
             num_buckets(num_buckets), flush_threshold(flush_threshold) {
         for (size_t i = 0; i < num_buckets; i++) {
-            auto f_name = prefix + "_" + std::to_string(i);
+            auto f_name = GetFileName(prefix, i);
             buckets.emplace_back(f_name, 3);
             result_files.emplace_back(f_name, 0, 0);
         }
