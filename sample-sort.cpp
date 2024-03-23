@@ -17,8 +17,19 @@ void TestSampleSort() {
     parlay::sort_inplace(all_nums, std::greater<>());
     // external memory sorting
     SampleSort<Type, std::greater<>> sorter;
-    auto files = FindFiles(input_prefix);
-    sorter.Sort(files, output_prefix, std::greater<>());
+    auto input_files = FindFiles(input_prefix);
+    auto result_files = sorter.Sort(input_files, output_prefix, std::greater<>());
+    size_t compare_index = 0;
+    for (const auto &f : result_files) {
+        auto current_file = (Type*)ReadEntireFile(f.file_name, f.true_size);
+        size_t n = f.true_size / sizeof(Type);
+        for (size_t i = 0; i < n; i++) {
+            if (all_nums[compare_index + i] != current_file[i]) {
+                LOG(ERROR) << "Mismatch at index " << compare_index + i << ". Expected " << all_nums[compare_index + i] << ". Got " << current_file[i];
+            }
+        }
+        compare_index += n;
+    }
 }
 
 int main() {

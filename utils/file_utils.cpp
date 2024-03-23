@@ -58,3 +58,14 @@ void ReadFileOnce(const std::string &file_name, void* buffer, size_t offset) {
     SYSCALL(read(fd, buffer, O_DIRECT_MULTIPLE));
     close(fd);
 }
+
+void *ReadEntireFile(const std::string &file_name, size_t read_size) {
+    if (read_size % O_DIRECT_MULTIPLE != 0) {
+        read_size += O_DIRECT_MULTIPLE - read_size % O_DIRECT_MULTIPLE;
+    }
+    void *buffer = malloc(read_size);
+    int fd = open(file_name.c_str(), O_RDONLY | O_DIRECT);
+    SYSCALL(fd);
+    SYSCALL(read(fd, buffer, read_size));
+    return buffer;
+}

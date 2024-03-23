@@ -15,6 +15,8 @@ void GetFileInfo(std::vector<FileInfo> &info);
 
 void ReadFileOnce(const std::string &file_name, void* buffer, size_t offset);
 
+void* ReadEntireFile(const std::string &file_name, size_t read_size);
+
 std::string GetFileName(const std::string &prefix, size_t file_number);
 
 #endif //SORTING_FILE_UTILS_H
