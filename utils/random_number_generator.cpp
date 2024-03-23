@@ -52,4 +52,6 @@ PointerVector<T> GenerateUniformRandomNumbers(const std::string &prefix, size_t 
 }
 
 template PointerVector<int32_t> GenerateUniformRandomNumbers(const std::string &prefix, size_t count, size_t nums_per_thread);
-PointerVector<int64_t> GenerateUniformRandomNumbers(const std::string &prefix, size_t count, size_t nums_per_thread);
+template PointerVector<uint32_t> GenerateUniformRandomNumbers(const std::string &prefix, size_t count, size_t nums_per_thread);
+template PointerVector<int64_t> GenerateUniformRandomNumbers(const std::string &prefix, size_t count, size_t nums_per_thread);
+template PointerVector<uint64_t> GenerateUniformRandomNumbers(const std::string &prefix, size_t count, size_t nums_per_thread);

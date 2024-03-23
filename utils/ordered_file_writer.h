@@ -34,14 +34,19 @@ public:
 
     ~OrderedFileWriter() {
         FlushRemainingPointers();
+        for (size_t i = 0; i < num_buckets; i++) {
+            buckets[i].~Bucket();
+        }
+        free(buckets);
     }
 
     void Initialize(const std::string &prefix, size_t bucket_count, size_t file_flush_threshold) {
         this->num_buckets = bucket_count;
         this->flush_threshold = file_flush_threshold;
+        buckets = (Bucket*)malloc(bucket_count * sizeof(Bucket));
         for (size_t i = 0; i < bucket_count; i++) {
             std::string f_name = GetFileName(prefix, i);
-            buckets.emplace_back(f_name);
+            new(&buckets[i]) Bucket(f_name);
             result_files.emplace_back(f_name, 0, 0);
         }
     }
@@ -51,7 +56,7 @@ public:
             return;
         }
         cleanup_complete = true;
-        parlay::parallel_for(0, buckets.size(), [&](size_t i) {
+        parlay::parallel_for(0, num_buckets, [&](size_t i) {
             buckets[i].FlushRemainingPointers();
             result_files[i].file_size = buckets[i].file_size;
             result_files[i].true_size = buckets[i].true_file_size;
@@ -72,7 +77,7 @@ private:
     size_t num_buckets = 0;
     size_t flush_threshold = 0;
     std::vector<FileInfo> result_files;
-    std::vector<Bucket> buckets;
+    Bucket *buckets;
 
     struct IOVectorRequest {
         size_t current_size = 0;

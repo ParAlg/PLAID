@@ -1,5 +1,5 @@
 cc_binary(
-    name = "sample-sort",
+    name = "sample_sort",
     srcs = ["sample-sort.cpp"],
     deps = [
         "//sorter:sample_sort",
@@ -8,7 +8,7 @@ cc_binary(
 )
 
 cc_binary(
-    name = "generate-random-numbers",
+    name = "generate_random_numbers",
     srcs = ["generate-random-numbers.cc"],
     deps = [
         "//utils:logger",
@@ -24,7 +24,7 @@ cc_library(
 )
 
 cc_binary(
-    name = "test-rng",
+    name = "test_rng",
     srcs = ["test-rng.cpp"],
     deps = [
         "//utils:logger",
