@@ -72,11 +72,11 @@ private:
     void AssignToBucketThread(parlay::sequence<T> samples, size_t flush_threshold, Comparator comp) {
         // reads from the reader and put result into a thread-local buffer; send to intermediate_writer when buffer is full
         size_t num_buckets = samples.size() + 1;
-        size_t buffer_count = flush_threshold / sizeof(T);
-        T* buffers[num_buckets];
+        size_t buffer_size = flush_threshold / sizeof(T);
+        T* buckets[num_buckets];
         unsigned int buffer_index[num_buckets];
         for (size_t i = 0; i < num_buckets; i++) {
-            buffers[i] = malloc(buffer_count * sizeof(T));
+            buckets[i] = (T*)malloc(buffer_size * sizeof(T));
             buffer_index[i] = 0;
         }
         while (true) {
@@ -87,26 +87,27 @@ private:
             for (size_t i = 0; i < size; i++) {
                 auto iter = std::upper_bound(samples.begin(), samples.end(), data[i], comp);
                 size_t bucket_index = std::distance(samples.begin(), iter);
-                buffers[bucket_index][buffer_index[bucket_index]++] = data[i];
-                if (buffer_index[bucket_index] == buffer_count) {
+                buckets[bucket_index][buffer_index[bucket_index]++] = data[i];
+                if (buffer_index[bucket_index] == buffer_size) {
                     buffer_index[bucket_index] = 0;
-                    intermediate_writer.Write(bucket_index, buffers[bucket_index], buffer_count);
-                    buffers[buffer_index] = malloc(buffer_count * sizeof(T));
+                    intermediate_writer.Write(bucket_index, buckets[bucket_index], buffer_size);
+                    buckets[bucket_index] = (T*)malloc(buffer_size * sizeof(T));
                 }
             }
         }
         for (size_t i = 0; i < num_buckets; i++) {
-            intermediate_writer.Write(i, buffers[i], buffer_index[i]);
+            intermediate_writer.Write(i, buckets[i], buffer_index[i]);
         }
     }
 
     FileInfo SortBucket(const FileInfo& file_info, std::string target_file, Comparator comparator) {
         // use parlay's sorting utility to sort this bucket
-        T *buffer = malloc(file_info.file_size);
+        T *buffer = (T*)malloc(file_info.file_size);
         int fd = open(file_info.file_name.c_str(), O_RDONLY | O_DIRECT);
         read(fd, buffer, file_info.file_size);
         close(fd);
-        parlay::sort_inplace(buffer, comparator);
+        parlay::sequence<T> seq(buffer, buffer + file_info.true_size / sizeof(T));
+        parlay::sort_inplace(seq, comparator);
         fd = open(target_file.c_str(), O_WRONLY | O_DIRECT | O_CREAT);
         write(fd, buffer, file_info.file_size);
         close(fd);
@@ -149,7 +150,8 @@ public:
                     if (bucket_list.empty()) {
                         return;
                     }
-                    file_info = bucket_list.pop_back();
+                    file_info = bucket_list.back();
+                    bucket_list.pop_back();
                     bucket_number = bucket_list.size();
                 }
                 auto result_name = GetFileName(result_prefix, bucket_number);

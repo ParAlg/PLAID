@@ -36,12 +36,12 @@ public:
         FlushRemainingPointers();
     }
 
-    void Initialize(std::string &prefix, size_t bucket_count, size_t file_flush_threshold) {
+    void Initialize(const std::string &prefix, size_t bucket_count, size_t file_flush_threshold) {
         this->num_buckets = bucket_count;
         this->flush_threshold = file_flush_threshold;
         for (size_t i = 0; i < bucket_count; i++) {
-            auto f_name = GetFileName(prefix, i);
-            buckets.emplace_back(f_name, 3);
+            std::string f_name = GetFileName(prefix, i);
+            buckets.emplace_back(f_name);
             result_files.emplace_back(f_name, 0, 0);
         }
     }
@@ -62,7 +62,7 @@ public:
         buckets[bucket_number].AddRequest(flush_threshold, pointer, count);
     }
 
-    std::vector<FileInfo> ReapResult() {
+    [[nodiscard]] std::vector<FileInfo> ReapResult() {
         FlushRemainingPointers();
         return std::move(result_files);
     }
@@ -80,7 +80,7 @@ private:
         uint32_t iovec_count = 0;
 
         void FreePointers() {
-            for (int i = 0; i < iovec_count; i++) {
+            for (size_t i = 0; i < iovec_count; i++) {
                 // FIXME: this assumes that the pointer is constructed with a malloc instead of
                 //   (1) a new T[]
                 //   (2) a new T
@@ -106,12 +106,17 @@ private:
         std::vector<IOVectorRequest *> completed_requests;
         std::vector<std::pair<T *, size_t>> misaligned_pointers;
 
-        Bucket(std::string &file_name, size_t max_requests) : max_requests(max_requests) {
-            io_uring_queue_init(max_requests, &ring, IORING_SETUP_SQPOLL);
+        Bucket() = delete;
+
+        // FIXME: magic numbers here
+        explicit Bucket(std::string &file_name) : max_requests(3) {
+            io_uring_queue_init(3, &ring, IORING_SETUP_SQPOLL);
             request = new IOVectorRequest();
             current_file = open(file_name.c_str(), O_WRONLY | O_DIRECT | O_CREAT);
             SYSCALL(current_file);
         }
+
+        Bucket(Bucket&&) = default;
 
         ~Bucket() {
             io_uring_queue_exit(&ring);
@@ -144,7 +149,8 @@ private:
 
         void SubmitToRing() {
             while (!pending_requests.empty() && requests_in_ring < 1) {
-                IOVectorRequest *ready_request = pending_requests.pop_back();
+                IOVectorRequest *ready_request = pending_requests.back();
+                pending_requests.pop_back();
                 // NOLINTNEXTLINE: disable clang-tidy uninitialized record warning
                 io_uring_sqe sqe;
                 io_uring_sqe_set_data(&sqe, ready_request);
@@ -162,7 +168,9 @@ private:
             while (completed_requests.empty()) {
                 ReapRing(1000);
             }
-            return completed_requests.pop_back();
+            auto result = completed_requests.back();
+            completed_requests.pop_back();
+            return result;
         }
 
         void FlushRequest() {

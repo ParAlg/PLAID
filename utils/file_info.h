@@ -16,7 +16,15 @@ struct FileInfo {
     FileInfo() = default;
 
     FileInfo(std::string file_name, size_t true_size, size_t file_size) :
-            file_name(std::move(file_name)), true_size(true_size), file_size(file_size) {}
+            file_name(std::move(file_name)), true_size(true_size), file_size(file_size) {};
+//
+//    FileInfo& operator=(const FileInfo &o) {
+//        this->file_name = o.file_name;
+//        this->true_size = o.true_size;
+//        this->file_size = o.file_size;
+//        return *this;
+//    }
+
 };
 
 
