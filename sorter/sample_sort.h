@@ -57,11 +57,18 @@ private:
         parlay::parallel_for(0, num_samples, [&](size_t i) {
             auto target_byte = sample_indices_list[i] * sizeof(T);
             auto file_num = std::upper_bound(size_prefix_sum, size_prefix_sum + file_list.size(), target_byte) - size_prefix_sum;
-            auto file_offset = target_byte - (file_num == 0 ? 0 : size_prefix_sum[i - 1]);
+            auto file_offset = target_byte - (file_num == 0 ? 0 : size_prefix_sum[file_num - 1]);
             // reads must be aligned in O_DIRECT; compute the starting byte
             auto file_read_base = file_offset / O_DIRECT_MULTIPLE * O_DIRECT_MULTIPLE;
             uint8_t buffer[O_DIRECT_MULTIPLE];
             // FIXME: what if this read crosses block boundaries? only an issue if the size of T is not a power of 2
+            if (file_read_base >= file_list[file_num].file_size) {
+                [[unlikely]]
+                LOG(ERROR) << "Read size exceeds file size. \n"
+                    << "File size: " << file_list[file_num].file_size << "\n"
+                    << "Read base: " << file_read_base;
+                exit(0);
+            }
             ReadFileOnce(file_list[file_num].file_name, buffer, file_read_base);
             std::lock_guard<std::mutex> lock(result_lock);
             result.push_back(*(T*)(buffer + (file_offset - file_read_base)));
