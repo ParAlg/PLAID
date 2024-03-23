@@ -53,7 +53,8 @@ std::string GetFileName(const std::string &prefix, size_t file_number) {
 void ReadFileOnce(const std::string &file_name, void* buffer, size_t offset) {
     int fd = open(file_name.c_str(), O_RDONLY | O_DIRECT);
     SYSCALL(fd);
-    SYSCALL(lseek64(fd, offset, SEEK_SET));
+    auto res = lseek64(fd, (long)offset, SEEK_SET);
+    SYSCALL(res);
     SYSCALL(read(fd, buffer, O_DIRECT_MULTIPLE));
     close(fd);
 }

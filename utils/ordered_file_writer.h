@@ -117,7 +117,7 @@ private:
         explicit Bucket(std::string &file_name) : max_requests(3) {
             io_uring_queue_init(3, &ring, IORING_SETUP_SQPOLL);
             request = new IOVectorRequest();
-            current_file = open(file_name.c_str(), O_WRONLY | O_DIRECT | O_CREAT);
+            current_file = open(file_name.c_str(), O_WRONLY | O_DIRECT | O_CREAT, 0744);
             SYSCALL(current_file);
         }
 

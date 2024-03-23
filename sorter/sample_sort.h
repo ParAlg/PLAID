@@ -54,7 +54,7 @@ private:
         std::vector<size_t> sample_indices_list(sample_indices.begin(), sample_indices.end());
         std::vector<T> result;
         std::mutex result_lock;
-        parlay::parallel_for(0, n, [&](size_t i) {
+        parlay::parallel_for(0, num_samples, [&](size_t i) {
             auto target_byte = sample_indices_list[i] * sizeof(T);
             auto file_num = std::upper_bound(size_prefix_sum, size_prefix_sum + file_list.size(), target_byte) - size_prefix_sum;
             auto file_offset = target_byte - (file_num == 0 ? 0 : size_prefix_sum[i - 1]);
@@ -108,7 +108,7 @@ private:
         close(fd);
         parlay::sequence<T> seq(buffer, buffer + file_info.true_size / sizeof(T));
         parlay::sort_inplace(seq, comparator);
-        fd = open(target_file.c_str(), O_WRONLY | O_DIRECT | O_CREAT);
+        fd = open(target_file.c_str(), O_WRONLY | O_DIRECT | O_CREAT, 0744);
         write(fd, buffer, file_info.file_size);
         close(fd);
         free(buffer);

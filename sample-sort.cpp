@@ -19,7 +19,6 @@ void TestSampleSort() {
     SampleSort<Type, std::greater<>> sorter;
     auto files = FindFiles(input_prefix);
     sorter.Sort(files, output_prefix, std::greater<>());
-
 }
 
 int main() {
