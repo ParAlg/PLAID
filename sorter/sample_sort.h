@@ -126,6 +126,7 @@ public:
         //       can process buckets concurrently to overlap IO and computation
         GetFileInfo(input_files);
         reader.PrepFiles(input_files);
+        reader.Start();
         size_t num_samples = 1024;
         size_t flush_threshold = 4 << 20;
         intermediate_writer.Initialize(result_prefix, num_samples + 1, 1 << 20);

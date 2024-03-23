@@ -20,6 +20,7 @@ int main() {
     }
     UnorderedFileReader<int> reader;
     reader.PrepFiles(PREFIX);
+    reader.Start();
     std::set<int> reader_values;
     while (true) {
         auto [ptr, size] = reader.Poll();
@@ -29,7 +30,7 @@ int main() {
         for (size_t i = 0; i < size; i++) {
             reader_values.insert(ptr[i]);
         }
-        delete[] ptr;
+        free(ptr);
     }
     if (reader_values.size() != writer_values.size()) {
         std::cout << reader_values.size() << " " << writer_values.size() << std::endl;

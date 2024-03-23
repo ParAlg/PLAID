@@ -1,7 +1,10 @@
 cc_binary(
     name = "sample-sort",
     srcs = ["sample-sort.cpp"],
-    deps = ["//sorter:sample_sort"],
+    deps = [
+        "//sorter:sample_sort",
+        "//utils:random_number_generator",
+    ],
 )
 
 cc_binary(

@@ -8,9 +8,6 @@
 #include <random>
 
 template <typename T>
-using PointerVector = std::vector<std::pair<std::shared_ptr<T[]>, size_t>>;
-
-template <typename T>
 std::unique_ptr<PointerVector<T>> WriteUniformRandomNumbers(UnorderedFileWriter<T> *writer, size_t count, size_t granularity) {
     std::random_device device;
     std::mt19937 rng(device());
@@ -19,7 +16,7 @@ std::unique_ptr<PointerVector<T>> WriteUniformRandomNumbers(UnorderedFileWriter<
     auto result = std::make_unique<PointerVector<T>>();
     while (count > 0) {
         auto array_size = std::min(granularity, count);
-        auto array = std::shared_ptr<T[]>(new T[array_size]);
+        std::shared_ptr<T> array((T*)malloc(array_size * sizeof(T)), free);
         count -= array_size;
         for (size_t i = 0; i < array_size; i++) {
             array.get()[i] = distribution(rng);

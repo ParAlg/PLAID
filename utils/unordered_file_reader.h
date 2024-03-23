@@ -37,7 +37,7 @@ public:
         this->files = file_list;
     }
 
-    void Start(size_t array_size, size_t io_uring_buffer_size) {
+    void Start(size_t array_size = 1 << 20, size_t io_uring_buffer_size = IO_URING_BUFFER_SIZE) {
         worker_thread = std::make_unique<std::thread>(RunFileReaderWorker, this, files, array_size, io_uring_buffer_size);
     }
 
@@ -173,7 +173,7 @@ private:
 
                 auto read_size = std::min(read_array_size * sizeof(T), file->file_size - file->bytes_read);
                 file->current_read_size = read_size;
-                file->data = new T[read_size / sizeof(T)];
+                file->data = (T*)malloc(read_size);
 
                 io_uring_prep_read(submission_queue_entry, file->fd, file->data, read_size, file->bytes_read);
                 io_uring_sqe_set_data(submission_queue_entry, file);

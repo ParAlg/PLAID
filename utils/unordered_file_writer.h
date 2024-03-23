@@ -19,10 +19,10 @@
 
 template<typename T>
 struct WriteRequest {
-    std::shared_ptr<T[]> data;
+    std::shared_ptr<T> data;
     size_t size;
 
-    WriteRequest(std::shared_ptr<T[]> data, size_t size) : data(std::move(data)), size(size) {}
+    WriteRequest(std::shared_ptr<T> data, size_t size) : data(std::move(data)), size(size) {}
 };
 
 template<typename T>
@@ -38,7 +38,7 @@ public:
         worker_thread->join();
     }
 
-    void Push(std::shared_ptr<T[]> data, size_t size) {
+    void Push(std::shared_ptr<T> data, size_t size) {
         // FIXME: need to align writes to 512 byte blocks, otherwise we won't be able to use O_DIRECT
         //   short term solution is to force multiples of 512 and throw an error otherwise;
         //   alternatively, use ftruncate to change the size of the file
@@ -103,7 +103,7 @@ private:
         int fd;
         char *file_name;
         size_t bytes_written = 0;
-        std::shared_ptr<T[]> data;
+        std::shared_ptr<T> data;
 
         explicit OpenedFile(const std::string &&name) {
             file_name = (char*)malloc(name.size() + 1);
@@ -112,7 +112,7 @@ private:
             SYSCALL(fd);
         }
 
-        void SetData(std::shared_ptr<T[]> data_ptr) {
+        void SetData(std::shared_ptr<T> data_ptr) {
             data = std::move(data_ptr);
         }
 
