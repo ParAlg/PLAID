@@ -81,7 +81,7 @@ public:
     }
 
     /**
-     * Block until file writer finishes and return the number of files
+     * Block until file intermediate_writer finishes and return the number of files
      * @return
      */
     int Wait() {

@@ -2,9 +2,16 @@
 // Created by peter on 3/2/24.
 //
 
+#include <filesystem>
+#include <sys/stat.h>
+#include <fcntl.h>
+
+#include "parlay/parallel.h"
+
 #include "file_utils.h"
 #include "config.h"
-#include <filesystem>
+#include "utils/logger.h"
+
 using std::filesystem::directory_iterator;
 using std::filesystem::path;
 
@@ -23,7 +30,30 @@ std::vector<FileInfo> FindFiles(const std::string &prefix, bool parallel) {
     return result;
 }
 
+void GetFileInfo(std::vector<FileInfo> &info) {
+    parlay::parallel_for(0, info.size(), [&](size_t i){
+        if (info[i].file_size == 0) {
+            struct stat stat_buf;
+            SYSCALL(stat(info[i].file_name.c_str(), &stat_buf));
+            info[i].file_size = stat_buf.st_size;
+        }
+        if (info[i].true_size == 0) {
+            uint8_t buffer[O_DIRECT_MULTIPLE];
+            ReadFileOnce(info[i].file_name, buffer, info[i].file_size - O_DIRECT_MULTIPLE);
+            info[i].true_size = info[i].file_size - *(uint16_t*)(buffer + O_DIRECT_MULTIPLE - METADATA_SIZE);
+        }
+    });
+}
+
 std::string GetFileName(const std::string &prefix, size_t file_number) {
     size_t ssd_number = file_number % SSD_COUNT;
     return "/mnt/ssd" + std::to_string(ssd_number) + "/" + prefix + std::to_string(file_number);
+}
+
+void ReadFileOnce(const std::string &file_name, void* buffer, size_t offset) {
+    int fd = open(file_name.c_str(), O_RDONLY | O_DIRECT);
+    SYSCALL(fd);
+    SYSCALL(lseek64(fd, offset, SEEK_SET));
+    SYSCALL(read(fd, buffer, O_DIRECT_MULTIPLE));
+    close(fd);
 }

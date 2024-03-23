@@ -33,7 +33,7 @@ public:
         files = FindFiles(prefix);
     }
 
-    void PrepFiles(std::vector<FileInfo> file_list) {
+    void PrepFiles(const std::vector<FileInfo>& file_list) {
         this->files = file_list;
     }
 

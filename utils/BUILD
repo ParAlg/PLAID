@@ -45,7 +45,9 @@ cc_library(
     hdrs = ["file_utils.h"],
     deps = [
         ":file_info",
+        ":logger",
         "//:config",
+        "@parlaylib//parlay:primitives",
     ],
 )
 
