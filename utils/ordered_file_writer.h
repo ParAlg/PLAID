@@ -33,7 +33,7 @@ public:
     }
 
     ~OrderedFileWriter() {
-        FlushRemainingPointers();
+        CleanUp();
         for (size_t i = 0; i < num_buckets; i++) {
             buckets[i].~Bucket();
         }
@@ -51,13 +51,13 @@ public:
         }
     }
 
-    void FlushRemainingPointers() {
+    void CleanUp() {
         if (cleanup_complete) {
             return;
         }
         cleanup_complete = true;
         parlay::parallel_for(0, num_buckets, [&](size_t i) {
-            buckets[i].FlushRemainingPointers();
+            buckets[i].CleanUp();
             result_files[i].file_size = buckets[i].file_size;
             result_files[i].true_size = buckets[i].true_file_size;
         });
@@ -68,7 +68,7 @@ public:
     }
 
     [[nodiscard]] std::vector<FileInfo> ReapResult() {
-        FlushRemainingPointers();
+        CleanUp();
         return std::move(result_files);
     }
 
@@ -135,7 +135,7 @@ private:
             SYSCALL(close(current_file));
         }
 
-        void ReapRing(long long wait_nanosecond = 0) {
+        void ReapRing(long long wait_second = 0, long long wait_nanosecond = 0) {
             while (true) {
                 io_uring_cqe *cqe;
                 struct __kernel_timespec wait_time{0, wait_nanosecond};
@@ -145,10 +145,22 @@ private:
                     break;
                 }
                 io_uring_cqe_seen(&ring, cqe);
+                SYSCALL(cqe->res);
                 auto completed_request = (IOVectorRequest *) io_uring_cqe_get_data(cqe);
                 requests_in_ring--;
                 completed_requests.push_back(completed_request);
                 completed_request->FreePointers();
+            }
+        }
+
+        void Wait() {
+            while (!pending_requests.empty() || requests_in_ring > 0) {
+                while (requests_in_ring > 0) {
+                    ReapRing(1);
+                }
+                if (!pending_requests.empty()) {
+                    SubmitToRing();
+                }
             }
         }
 
@@ -171,19 +183,27 @@ private:
                 return new IOVectorRequest();
             }
             while (completed_requests.empty()) {
-                ReapRing(1000);
+                ReapRing(0, 1000);
             }
             auto result = completed_requests.back();
             completed_requests.pop_back();
             return result;
         }
 
-        void FlushRequest() {
-            file_size += request->current_size;
-            pending_requests.push_back(request);
-            ReapRing();
-            SubmitToRing();
-            request = NewRequest();
+        void FlushRequest(bool is_last_request = false) {
+            if (request->current_size > 0) {
+                [[likely]]
+                file_size += request->current_size;
+                pending_requests.push_back(request);
+                ReapRing();
+                SubmitToRing();
+            }
+            if (is_last_request) {
+                [[unlikely]]
+                request = nullptr;
+            } else {
+                request = NewRequest();
+            }
         }
 
         inline void AddRequest(size_t io_threshold, T *pointer, size_t count) {
@@ -201,16 +221,12 @@ private:
             }
         }
 
-        void FlushRemainingPointers() {
-            size_t num_pointers = misaligned_pointers.size() + 1;
-            iovec io_vectors[num_pointers];
+        void FlushMisalignedPointers() {
             size_t write_size = 0;
             for (size_t i = 0; i < misaligned_pointers.size(); i++) {
                 auto [pointer, count] = misaligned_pointers[i];
                 size_t pointer_size = count * sizeof(T);
                 write_size += pointer_size;
-                io_vectors[i].iov_base = pointer;
-                io_vectors[i].iov_len = pointer_size;
             }
             size_t target_write_size = (write_size / O_DIRECT_MULTIPLE + 1) * O_DIRECT_MULTIPLE;
             if (target_write_size - write_size < METADATA_SIZE) {
@@ -218,20 +234,29 @@ private:
             }
             size_t byte_diff = target_write_size - write_size;
 
-            // set up padding at end of file to align with target write size
-            int8_t end_file_padding[byte_diff];
-            *(uint16_t*)(&end_file_padding[byte_diff - METADATA_SIZE]) = (uint16_t)byte_diff;
-            io_vectors[num_pointers - 1].iov_base = end_file_padding;
-            io_vectors[num_pointers - 1].iov_len = byte_diff;
-
-            writev(current_file, io_vectors, (int)num_pointers);
-
-            for (size_t i = 0 ; i < num_pointers - 1; i++) {
-                free(io_vectors[i].iov_base);
+            uint8_t write_buffer[target_write_size];
+            size_t buffer_position = 0;
+            for (size_t i = 0; i < misaligned_pointers.size(); i++) {
+                auto [pointer, count] = misaligned_pointers[i];
+                size_t pointer_size = count * sizeof(T);
+                memcpy(write_buffer + buffer_position, pointer, pointer_size);
+                buffer_position += pointer_size;
             }
+            *(uint16_t*)(&write_buffer[target_write_size - METADATA_SIZE]) = (uint16_t)byte_diff;
 
+            SYSCALL(write(current_file, write_buffer, target_write_size));
+            for (size_t i = 0 ; i < misaligned_pointers.size(); i++) {
+                free(misaligned_pointers[i].first);
+            }
+            // compute true file size (excluding garbage bytes and marker at the end) and file size on disk
             true_file_size = file_size + write_size;
             file_size += target_write_size;
+        }
+
+        void CleanUp() {
+            FlushRequest(true);
+            Wait();
+            FlushMisalignedPointers();
         }
     };
 };

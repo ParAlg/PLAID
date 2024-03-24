@@ -34,8 +34,8 @@ public:
     }
 
     ~UnorderedFileWriter() {
-        is_open = false;
-        worker_thread->join();
+        Close();
+        Wait();
     }
 
     void Push(std::shared_ptr<T> data, size_t size) {
@@ -84,9 +84,10 @@ public:
      * Block until file intermediate_writer finishes and return the number of files
      * @return
      */
-    int Wait() {
-        worker_thread->join();
-        return num_files;
+    void Wait() {
+        if (worker_thread->joinable()) {
+            worker_thread->join();
+        }
     }
 
 private:

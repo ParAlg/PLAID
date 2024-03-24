@@ -22,7 +22,7 @@
 template<typename T, typename Comparator>
 class SampleSort {
 private:
-    std::vector<T> GetSamples(std::vector<FileInfo> &file_list, size_t num_samples) {
+    static std::vector<T> GetSamples(std::vector<FileInfo> &file_list, size_t num_samples) {
         // num_samples is assumed to be < 10000, so parallelism shouldn't be necessary
         size_t size_prefix_sum[file_list.size()];
         for (size_t i = 0; i < file_list.size(); i++) {
@@ -111,15 +111,34 @@ private:
         // use parlay's sorting utility to sort this bucket
         T *buffer = (T*)malloc(file_info.file_size);
         int fd = open(file_info.file_name.c_str(), O_RDONLY | O_DIRECT);
-        read(fd, buffer, file_info.file_size);
+        SYSCALL(fd);
+        SYSCALL(read(fd, buffer, file_info.file_size));
         close(fd);
         parlay::sequence<T> seq(buffer, buffer + file_info.true_size / sizeof(T));
         parlay::sort_inplace(seq, comparator);
         fd = open(target_file.c_str(), O_WRONLY | O_DIRECT | O_CREAT, 0744);
-        write(fd, buffer, file_info.file_size);
+        SYSCALL(fd);
+        SYSCALL(write(fd, buffer, file_info.file_size));
         close(fd);
         free(buffer);
         return {std::move(target_file), file_info.true_size, file_info.file_size};
+    }
+
+    static size_t GetSampleSize(const std::vector<FileInfo> &input_files) {
+        // FIXME: considerations for sample size
+        //   (1) samples should ideally fit in L1 cache for maximal binary search efficiency
+        //   (2) each bucket should be small enough to fit in main memory; ideally they should be small each that we
+        //       can process buckets concurrently to overlap IO and computation
+        size_t file_size = 0;
+        for (const auto &f : input_files) {
+            file_size += f.true_size;
+        }
+        // FIXME: assuming no bucket is skewed to the point where it is 3 times the average size
+        size_t min_sample_size = std::max(1UL, 3 * file_size / MAIN_MEMORY_SIZE);
+        // max sample size cannot exceed the number of elements; it should also not result in very tiny files
+        size_t max_sample_size = std::max(1UL, std::min(file_size / sizeof(T), file_size / O_DIRECT_MULTIPLE));
+        // FIXME: need more stuff here; 1024 is a temporary value
+        return std::max(std::min(1024UL, max_sample_size), min_sample_size);
     }
 
     UnorderedFileReader<T> reader;
@@ -127,17 +146,16 @@ private:
 
 public:
 
-    std::vector<FileInfo> Sort(std::vector<FileInfo> &input_files, const std::string& result_prefix, Comparator comp) {
-        // FIXME: considerations for sample size
-        //   (1) samples should ideally fit in L1 cache for maximal binary search efficiency
-        //   (2) each bucket should be small enough to fit in main memory; ideally they should be small each that we
-        //       can process buckets concurrently to overlap IO and computation
+    std::vector<FileInfo> Sort(std::vector<FileInfo> &input_files,
+                               const std::string& result_prefix,
+                               Comparator comp) {
         GetFileInfo(input_files);
         reader.PrepFiles(input_files);
         reader.Start();
-        size_t num_samples = 1024;
+        size_t num_samples = GetSampleSize(input_files);
         size_t flush_threshold = 4 << 20;
-        intermediate_writer.Initialize(result_prefix, num_samples + 1, 1 << 20);
+        // FIXME: change this file name to a different one (possibly randomized?)
+        intermediate_writer.Initialize("spfx_", num_samples + 1, 1 << 20);
         auto samples = GetSamples(input_files, num_samples);
         const auto sorted_pivots = parlay::sort(samples, comp);
         parlay::parallel_for(0, THREAD_COUNT, [&](int i) {
@@ -148,6 +166,8 @@ public:
         std::mutex bucket_list_lock;
         std::vector<FileInfo> result_list(num_samples + 1);
         // FIXME: should allow as much parallelism as internal memory allows; need to calculate memory budget
+        //   also, this can get tricky since using a conditional variable to guard against memory overflow
+        //   may result in suboptimal performance
         parlay::parallel_for(0, THREAD_COUNT, [&](int i) {
             FileInfo file_info;
             size_t bucket_number;
