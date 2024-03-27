@@ -114,8 +114,12 @@ private:
         SYSCALL(fd);
         SYSCALL(read(fd, buffer, file_info.file_size));
         close(fd);
-        parlay::sequence<T> seq(buffer, buffer + file_info.true_size / sizeof(T));
+        size_t n = file_info.true_size / sizeof(T);
+        parlay::sequence<T> seq(buffer, buffer + n);
         parlay::sort_inplace(seq, comparator);
+        for (size_t i = 0; i < n; i++) {
+            buffer[i] = seq[i];
+        }
         fd = open(target_file.c_str(), O_WRONLY | O_DIRECT | O_CREAT, 0744);
         SYSCALL(fd);
         SYSCALL(write(fd, buffer, file_info.file_size));

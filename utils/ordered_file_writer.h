@@ -243,7 +243,8 @@ private:
                 buffer_position += pointer_size;
             }
             *(uint16_t*)(&write_buffer[target_write_size - METADATA_SIZE]) = (uint16_t)byte_diff;
-
+            // FIXME: performance bottleneck here? parlay does not know to let a thread yield when it's doing
+            //   synchronous IO
             SYSCALL(write(current_file, write_buffer, target_write_size));
             for (size_t i = 0 ; i < misaligned_pointers.size(); i++) {
                 free(misaligned_pointers[i].first);
