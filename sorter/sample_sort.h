@@ -142,21 +142,26 @@ private:
         }
     }
 
+    /**
+     * Sort a file's content in internal memory
+     * @tparam Comparator
+     * @param file_info
+     * @param target_file File to which the result of the sorting algorithm will be written
+     * @param comparator
+     * @return Information of the resulting file
+     */
     template <typename Comparator>
     FileInfo SortBucket(const FileInfo& file_info, std::string target_file, Comparator comparator) {
         // use parlay's sorting utility to sort this bucket
-        T *buffer = (T*)malloc(file_info.file_size);
-        int fd = open(file_info.file_name.c_str(), O_RDONLY | O_DIRECT);
-        SYSCALL(fd);
-        SYSCALL(read(fd, buffer, file_info.file_size));
-        close(fd);
+        T *buffer = (T*)ReadEntireFile(file_info.file_name, file_info.file_size);
         size_t n = file_info.true_size / sizeof(T);
+        // FIXME: needlessly copying data; need to sort on raw pointers in parlay; ask Laxman
         parlay::sequence<T> seq(buffer, buffer + n);
         parlay::sort_inplace(seq, comparator);
         for (size_t i = 0; i < n; i++) {
             buffer[i] = seq[i];
         }
-        fd = open(target_file.c_str(), O_WRONLY | O_DIRECT | O_CREAT, 0744);
+        int fd = open(target_file.c_str(), O_WRONLY | O_DIRECT | O_CREAT, 0744);
         SYSCALL(fd);
         SYSCALL(write(fd, buffer, file_info.file_size));
         close(fd);
@@ -164,6 +169,11 @@ private:
         return {std::move(target_file), file_info.true_size, file_info.file_size};
     }
 
+    /**
+     * Compute a sensible sample size based on information about the files that are about to be sorted.
+     * @param input_files List of file to be sorted
+     * @return An ideal sample size
+     */
     static size_t GetSampleSize(const std::vector<FileInfo> &input_files) {
         // FIXME: considerations for sample size
         //   (1) samples should ideally fit in L1 cache for maximal binary search efficiency
@@ -181,7 +191,9 @@ private:
         return std::max(std::min(1024UL, max_sample_size), min_sample_size);
     }
 
+    // reader for the input files
     UnorderedFileReader<T> reader;
+    // writer to handle all the buckets created in phase 1 of sample sort
     OrderedFileWriter<T> intermediate_writer;
 
 public:
@@ -210,9 +222,11 @@ public:
         //   also, this can get tricky since using a conditional variable to guard against memory overflow
         //   may result in suboptimal performance
         parlay::parallel_for(0, THREAD_COUNT, [&](int i) {
+            // each thread gets a bucket and sorts the content of that bucket in internal memory
             FileInfo file_info;
             size_t bucket_number;
             while (true) {
+                // get a bucket
                 {
                     std::lock_guard<std::mutex> lock(bucket_list_lock);
                     if (bucket_list.empty()) {
@@ -222,6 +236,7 @@ public:
                     bucket_list.pop_back();
                     bucket_number = bucket_list.size();
                 }
+                // sort this bucket in internal memory
                 auto result_name = GetFileName(result_prefix, bucket_number);
                 SortBucket(file_info, result_name, comp);
                 result_list[bucket_number].file_name = result_name;
