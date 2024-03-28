@@ -21,11 +21,20 @@
 #include "utils/file_info.h"
 #include "utils/file_utils.h"
 
+/**
+ * Not really an ordered file writer. This class creates many buckets. Each bucket corresponds to a file.
+ * Data sent to the same file are not written in order, but the order of the buckets are respected.
+ *
+ * @tparam T
+ */
 template<typename T>
 class OrderedFileWriter {
     struct Bucket;
     struct IOVectorRequest;
 public:
+    /**
+     * If the default constructor is used, need to call Initialize later
+     */
     OrderedFileWriter() = default;
 
     OrderedFileWriter(std::string &prefix, size_t num_buckets, size_t flush_threshold) {
@@ -40,22 +49,35 @@ public:
         free(buckets);
     }
 
+    /**
+     * Initialize the file writer
+     *
+     * @param prefix Prefix of output file names
+     * @param bucket_count Number of buckets to create (they're numbered starting from 0)
+     * @param file_flush_threshold The threshold (in bytes) at which a chunk of data is sent to disk
+     */
     void Initialize(const std::string &prefix, size_t bucket_count, size_t file_flush_threshold) {
         this->num_buckets = bucket_count;
-        this->flush_threshold = file_flush_threshold;
+        // allocate memory for all buckets
         buckets = (Bucket*)malloc(bucket_count * sizeof(Bucket));
         for (size_t i = 0; i < bucket_count; i++) {
             std::string f_name = GetFileName(prefix, i);
-            new(&buckets[i]) Bucket(f_name);
+            // do a placement new since the std::mutex in a Bucket can't be copied or moved
+            new(&buckets[i]) Bucket(f_name, file_flush_threshold);
+            // construct the result file; file sizes will be filled in later
             result_files.emplace_back(f_name, 0, 0);
         }
     }
 
+    /**
+     * Clean up half-full buckets and misaligned writes in each bucket. Must be called before writer exits to ensure
+     * that everything is written to disk. This should not be called concurrently.
+     */
     void CleanUp() {
-        if (cleanup_complete) {
+        if (cleanup_started) {
             return;
         }
-        cleanup_complete = true;
+        cleanup_started = true;
         parlay::parallel_for(0, num_buckets, [&](size_t i) {
             buckets[i].CleanUp();
             result_files[i].file_size = buckets[i].file_size;
@@ -63,8 +85,16 @@ public:
         });
     }
 
+    /**
+     * Write data to a particular bucket in the writer.
+     *
+     * Do not submit arrays whose size is not a multiple of O_DIRECT_MULTIPLE unless necessary.
+     * @param bucket_number
+     * @param pointer
+     * @param count
+     */
     void Write(size_t bucket_number, T *pointer, size_t count) {
-        buckets[bucket_number].AddRequest(flush_threshold, pointer, count);
+        buckets[bucket_number].AddRequest(pointer, count);
     }
 
     [[nodiscard]] std::vector<FileInfo> ReapResult() {
@@ -73,9 +103,8 @@ public:
     }
 
 private:
-    bool cleanup_complete = false;
+    bool cleanup_started = false;
     size_t num_buckets = 0;
-    size_t flush_threshold = 0;
     std::vector<FileInfo> result_files;
     Bucket *buckets;
 
@@ -107,6 +136,7 @@ private:
         int current_file;
         size_t file_size = 0;
         size_t true_file_size = 0;
+        size_t io_threshold = 0;
         std::vector<IOVectorRequest *> pending_requests;
         std::vector<IOVectorRequest *> completed_requests;
         std::vector<std::pair<T *, size_t>> misaligned_pointers;
@@ -114,7 +144,7 @@ private:
         Bucket() = delete;
 
         // FIXME: magic numbers here
-        explicit Bucket(std::string &file_name) : max_requests(3) {
+        explicit Bucket(std::string &file_name, size_t io_threshold) : max_requests(3), io_threshold(io_threshold) {
             io_uring_queue_init(3, &ring, IORING_SETUP_SQPOLL);
             request = new IOVectorRequest();
             current_file = open(file_name.c_str(), O_WRONLY | O_DIRECT | O_CREAT, 0744);
@@ -135,10 +165,15 @@ private:
             SYSCALL(close(current_file));
         }
 
+        /**
+         * Reap the completion queue of io_uring
+         * @param wait_second Number of seconds to wait
+         * @param wait_nanosecond Number of nanoseconds to wait
+         */
         void ReapRing(long long wait_second = 0, long long wait_nanosecond = 0) {
             while (true) {
                 io_uring_cqe *cqe;
-                struct __kernel_timespec wait_time{0, wait_nanosecond};
+                struct __kernel_timespec wait_time{wait_second, wait_nanosecond};
                 int res = io_uring_wait_cqe_timeout(&ring, &cqe, &wait_time);
                 if (res != 0) {
                     // no more cqe entries to reap
@@ -153,6 +188,9 @@ private:
             }
         }
 
+        /**
+         * Wait until no requests are pending and no requests are being processed in the io_uring
+         */
         void Wait() {
             while (!pending_requests.empty() || requests_in_ring > 0) {
                 while (requests_in_ring > 0) {
@@ -164,11 +202,13 @@ private:
             }
         }
 
+        /**
+         * Try submit a pending request to the ring
+         */
         void SubmitToRing() {
             while (!pending_requests.empty() && requests_in_ring < 1) {
                 IOVectorRequest *ready_request = pending_requests.back();
                 pending_requests.pop_back();
-                // NOLINTNEXTLINE: disable clang-tidy uninitialized record warning
                 io_uring_sqe sqe;
                 io_uring_sqe_set_data(&sqe, ready_request);
                 io_uring_prep_writev(&sqe, current_file, ready_request->io_vectors, ready_request->iovec_count, 0);
@@ -177,11 +217,18 @@ private:
             }
         }
 
+        /**
+         * Create a new iovec request
+         * @return Pointer to the new request
+         */
         IOVectorRequest *NewRequest() {
+            // can't create too many requests; otherwise may exceed memory limit
+            // TODO: maybe we can have some request pool shared across all buckets?
             if (requests_created < max_requests) {
                 requests_created++;
                 return new IOVectorRequest();
             }
+            // if we reached the limit, we can only reuse an old request
             while (completed_requests.empty()) {
                 ReapRing(0, 1000);
             }
@@ -190,7 +237,12 @@ private:
             return result;
         }
 
-        void FlushRequest(bool is_last_request = false) {
+        /**
+         * Signify that the current request is ready to be written to disk. The request will be sent to
+         * pending_requests and the value will be set to nullptr.
+         * @param is_last_request True if this is the last request to be submitted.
+         */
+        void RequestReady(bool is_last_request = false) {
             if (request->current_size > 0) {
                 [[likely]]
                 file_size += request->current_size;
@@ -200,27 +252,45 @@ private:
             }
             if (is_last_request) {
                 [[unlikely]]
+                if (request != nullptr) {
+                    delete request;
+                }
                 request = nullptr;
-            } else {
+            } else if (request->current_size > 0) {
                 request = NewRequest();
             }
         }
 
-        inline void AddRequest(size_t io_threshold, T *pointer, size_t count) {
+        /**
+         * Add a new write request in this bucket. This function is thread-safe.
+         *
+         * Do not submit arrays whose size is not a multiple of O_DIRECT_MULTIPLE unless necessary
+         * @param pointer
+         * @param count Number of elements in pointer
+         */
+        inline void AddRequest(T *pointer, size_t count) {
             std::lock_guard<std::mutex> bucket_lock(lock);
             auto size = count * sizeof(T);
+            // misaligned pointer need special treatment since they won't fit in a iovec
             if (size % O_DIRECT_MULTIPLE != 0) {
                 misaligned_pointers.emplace_back(pointer, count);
                 return;
             }
             request->io_vectors[request->iovec_count].iov_base = pointer;
             request->io_vectors[request->iovec_count].iov_len = size;
+            request->iovec_count += 1;
             request->current_size += size;
             if (request->current_size >= io_threshold || request->iovec_count >= IO_VECTOR_SIZE) {
-                FlushRequest();
+                RequestReady();
             }
         }
 
+        /**
+         * Write misaligned pointers (those whose size cannot be divided by O_DIRECT_MULTIPLE) to the file.
+         *
+         * Copies the content in each pointer into a buffer and then writes the buffer to disk using
+         * synchronous IO.
+         */
         void FlushMisalignedPointers() {
             size_t write_size = 0;
             for (size_t i = 0; i < misaligned_pointers.size(); i++) {
@@ -255,8 +325,10 @@ private:
         }
 
         void CleanUp() {
-            FlushRequest(true);
+            // flush the last request and wait for it to complete
+            RequestReady(true);
             Wait();
+            // flush misaligned pointers
             FlushMisalignedPointers();
         }
     };

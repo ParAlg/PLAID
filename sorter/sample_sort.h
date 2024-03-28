@@ -19,25 +19,43 @@
 #include "utils/unordered_file_reader.h"
 #include "utils/ordered_file_writer.h"
 
-template<typename T, typename Comparator>
+/**
+ * Perform external memory sample sort
+ *
+ * @tparam T The type to be sorted
+ * @tparam Comparator The comparison method to use
+ */
+template<typename T>
 class SampleSort {
 private:
+    /**
+     * Obtain random samples from a list of files
+     *
+     * @param file_list
+     * @param num_samples
+     * @return A vector of <code>num_samples</code> samples
+     */
     static std::vector<T> GetSamples(std::vector<FileInfo> &file_list, size_t num_samples) {
         // num_samples is assumed to be < 10000, so parallelism shouldn't be necessary
         size_t size_prefix_sum[file_list.size()];
         for (size_t i = 0; i < file_list.size(); i++) {
             auto prev = i == 0 ? 0 : size_prefix_sum[i-1];
             size_prefix_sum[i] = file_list[i].true_size + prev;
+            if (file_list[i].true_size == 0) {
+                [[unlikely]]
+                LOG(ERROR) << "File's true size should already be determined";
+            }
         }
         size_t total_size = size_prefix_sum[file_list.size() - 1];
+        // n is the number of elements in all files
         size_t n = total_size / sizeof(T);
-        // choose num_samples from n elements
-        // use rejection sampling; the Vitter algorithms mentioned in the link are viable alternatives
-        // (https://cs.stackexchange.com/questions/104930/efficient-n-choose-k-random-sampling)
         if (num_samples > n) {
             [[unlikely]]
             LOG(ERROR) << "Sample size is " << num_samples << " but we only have " << n << " elements";
         }
+        // choose num_samples from n elements
+        // use rejection sampling; the Vitter algorithms mentioned in the link are viable alternatives
+        // (https://cs.stackexchange.com/questions/104930/efficient-n-choose-k-random-sampling)
         std::set<size_t> sample_indices;
         std::random_device rd;
         std::mt19937_64 rng(rd());
@@ -54,32 +72,40 @@ private:
         std::vector<size_t> sample_indices_list(sample_indices.begin(), sample_indices.end());
         std::vector<T> result;
         std::mutex result_lock;
+        // perform file IO in parallel to get the content of each sample
         parlay::parallel_for(0, num_samples, [&](size_t i) {
             auto target_byte = sample_indices_list[i] * sizeof(T);
+            // use binary search to find which file contains the target byte
             auto file_num = std::upper_bound(size_prefix_sum, size_prefix_sum + file_list.size(), target_byte) - size_prefix_sum;
             auto file_offset = target_byte - (file_num == 0 ? 0 : size_prefix_sum[file_num - 1]);
-            // reads must be aligned in O_DIRECT; compute the starting byte
-            auto file_read_base = file_offset / O_DIRECT_MULTIPLE * O_DIRECT_MULTIPLE;
-            uint8_t buffer[O_DIRECT_MULTIPLE];
-            // FIXME: what if this read crosses block boundaries? only an issue if the size of T is not a power of 2
-            if (file_read_base >= file_list[file_num].file_size) {
-                [[unlikely]]
-                LOG(ERROR) << "Read size exceeds file size. \n"
-                    << "File size: " << file_list[file_num].file_size << "\n"
-                    << "Read base: " << file_read_base;
-                exit(0);
-            }
-            ReadFileOnce(file_list[file_num].file_name, buffer, file_read_base);
+            // a buffer for file IO
+            uint8_t buffer[sizeof(T)];
+            ReadFileOnce(file_list[file_num].file_name, buffer, file_offset, sizeof(T));
+            // avoid concurrent access to list of samples
             std::lock_guard<std::mutex> lock(result_lock);
-            result.push_back(*(T*)(buffer + (file_offset - file_read_base)));
+            result.push_back(*(T*)(buffer));
         });
         return result;
     }
 
-    void AssignToBucketThread(parlay::sequence<T> samples, size_t flush_threshold, Comparator comp) {
+    /**
+     * Keep polling from the reader for data and then assign items into buckets according to how they compare
+     * with samples. Buckets are flushed to the writer whenever they're full.
+     *
+     * The function is meant to be run as a thread and exits when the reader returns nullptr (no more input available)
+     *
+     * @tparam Comparator
+     * @param samples
+     * @param flush_threshold The number of bytes in each bucket. This is the threshold at which a bucket gets sent
+     * to the writer. It may or may not be written to disk at the writer's discretion.
+     * @param comp
+     */
+    template <typename Comparator>
+    void AssignToBucket(parlay::sequence<T> samples, size_t flush_threshold, Comparator comp) {
         // reads from the reader and put result into a thread-local buffer; send to intermediate_writer when buffer is full
         size_t num_buckets = samples.size() + 1;
         size_t buffer_size = flush_threshold / sizeof(T);
+        // each bucket stores a pointer to an array, which will hold temporary values in that bucket
         T* buckets[num_buckets];
         unsigned int buffer_index[num_buckets];
         for (size_t i = 0; i < num_buckets; i++) {
@@ -92,9 +118,12 @@ private:
                 break;
             }
             for (size_t i = 0; i < size; i++) {
+                // use binary search to find which bucket it belongs to
                 auto iter = std::upper_bound(samples.begin(), samples.end(), data[i], comp);
                 size_t bucket_index = std::distance(samples.begin(), iter);
+                // move data to bucket
                 buckets[bucket_index][buffer_index[bucket_index]++] = data[i];
+                // flush if bucket is full
                 if (buffer_index[bucket_index] == buffer_size) {
                     buffer_index[bucket_index] = 0;
                     intermediate_writer.Write(bucket_index, buckets[bucket_index], buffer_size);
@@ -102,11 +131,18 @@ private:
                 }
             }
         }
+        // cleanup partially full buckets
         for (size_t i = 0; i < num_buckets; i++) {
-            intermediate_writer.Write(i, buckets[i], buffer_index[i]);
+            // if bucket is empty, free and do nothing else; otherwise send to writer
+            if (buffer_index[i] == 0) {
+                free(buckets[i]);
+            } else {
+                intermediate_writer.Write(i, buckets[i], buffer_index[i]);
+            }
         }
     }
 
+    template <typename Comparator>
     FileInfo SortBucket(const FileInfo& file_info, std::string target_file, Comparator comparator) {
         // use parlay's sorting utility to sort this bucket
         T *buffer = (T*)malloc(file_info.file_size);
@@ -150,6 +186,7 @@ private:
 
 public:
 
+    template <typename Comparator>
     std::vector<FileInfo> Sort(std::vector<FileInfo> &input_files,
                                const std::string& result_prefix,
                                Comparator comp) {
@@ -163,7 +200,7 @@ public:
         auto samples = GetSamples(input_files, num_samples);
         const auto sorted_pivots = parlay::sort(samples, comp);
         parlay::parallel_for(0, THREAD_COUNT, [&](int i) {
-            AssignToBucketThread(sorted_pivots, flush_threshold, comp);
+            AssignToBucket(sorted_pivots, flush_threshold, comp);
         });
         // retrieve buckets from intermediate_writer
         auto bucket_list = intermediate_writer.ReapResult();

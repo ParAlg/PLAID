@@ -9,6 +9,10 @@
 #include <cstring>
 #include "absl/log/log.h"
 
+/**
+ * Macro for error checking after doing a system call. If an error is produced, print the resulting (negative)
+ * number and print errno.
+ */
 #define SYSCALL(expr) do { \
     int result = (expr);   \
     if (__builtin_expect(result < 0, 0)) LOG(ERROR) << "System call returned " << result << ": " \

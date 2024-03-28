@@ -14,6 +14,7 @@ std::vector<FileInfo> FindFiles(const std::string &prefix, bool parallel = false
 void GetFileInfo(std::vector<FileInfo> &info);
 
 void ReadFileOnce(const std::string &file_name, void* buffer, size_t offset);
+void ReadFileOnce(const std::string &file_name, void *buffer, size_t start, size_t read_size);
 
 void* ReadEntireFile(const std::string &file_name, size_t read_size);
 
