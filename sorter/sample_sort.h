@@ -101,7 +101,7 @@ private:
      * @param comp
      */
     template <typename Comparator>
-    void AssignToBucket(parlay::sequence<T> samples, size_t flush_threshold, Comparator comp) {
+    void AssignToBucket(const parlay::sequence<T> &samples, size_t flush_threshold, Comparator comp) {
         // reads from the reader and put result into a thread-local buffer; send to intermediate_writer when buffer is full
         size_t num_buckets = samples.size() + 1;
         size_t buffer_size = flush_threshold / sizeof(T);
@@ -117,6 +117,7 @@ private:
             if (data == nullptr) {
                 break;
             }
+            // TODO: sort chunk in memory and then interleave samples with it
             for (size_t i = 0; i < size; i++) {
                 // use binary search to find which bucket it belongs to
                 auto iter = std::upper_bound(samples.begin(), samples.end(), data[i], comp);
@@ -155,12 +156,8 @@ private:
         // use parlay's sorting utility to sort this bucket
         T *buffer = (T*)ReadEntireFile(file_info.file_name, file_info.file_size);
         size_t n = file_info.true_size / sizeof(T);
-        // FIXME: needlessly copying data; need to sort on raw pointers in parlay; ask Laxman
-        parlay::sequence<T> seq(buffer, buffer + n);
+        auto seq = parlay::make_slice(buffer, buffer + n);
         parlay::sort_inplace(seq, comparator);
-        for (size_t i = 0; i < n; i++) {
-            buffer[i] = seq[i];
-        }
         int fd = open(target_file.c_str(), O_WRONLY | O_DIRECT | O_CREAT, 0744);
         SYSCALL(fd);
         SYSCALL(write(fd, buffer, file_info.file_size));

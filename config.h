@@ -25,6 +25,4 @@ constexpr size_t O_DIRECT_MULTIPLE = 4096;
 constexpr size_t METADATA_SIZE = 2;
 constexpr size_t IO_URING_BUFFER_SIZE = 60;
 
-
-
 #endif //SORTING_CONFIG_H

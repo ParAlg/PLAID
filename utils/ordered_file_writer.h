@@ -110,6 +110,7 @@ private:
 
     struct IOVectorRequest {
         size_t current_size = 0;
+        // FIXME: add doc on why using iovec
         iovec io_vectors[IO_VECTOR_SIZE];
         uint32_t iovec_count = 0;
 
