@@ -23,7 +23,6 @@
  * Perform external memory sample sort
  *
  * @tparam T The type to be sorted
- * @tparam Comparator The comparison method to use
  */
 template<typename T>
 class SampleSort {
@@ -58,6 +57,7 @@ private:
         // (https://cs.stackexchange.com/questions/104930/efficient-n-choose-k-random-sampling)
         std::set<size_t> sample_indices;
         std::random_device rd;
+        // FIXME: seed fixed for debugging purposes
         std::mt19937_64 rng(rd());
         std::uniform_int_distribution<size_t> dis(0, n);
         for (size_t i = 0; i < num_samples; i++) {
@@ -88,6 +88,14 @@ private:
         return result;
     }
 
+    void VerifyBucket(size_t start, size_t end, T* ptr, size_t size) {
+        for (size_t i = 0; i < size; i++) {
+            if (ptr[i] < start || ptr[i] > end) {
+                LOG(ERROR) << ptr[i] << " is not within range from " << start << " to " << end;
+            }
+        }
+    }
+
     /**
      * Keep polling from the reader for data and then assign items into buckets according to how they compare
      * with samples. Buckets are flushed to the writer whenever they're full.
@@ -109,7 +117,9 @@ private:
         T* buckets[num_buckets];
         unsigned int buffer_index[num_buckets];
         for (size_t i = 0; i < num_buckets; i++) {
-            buckets[i] = (T*)malloc(buffer_size * sizeof(T));
+//            // may need posix_memalign since writev under O_DIRECT expects pointers to be aligned as well
+//            posix_memalign((void**)&buckets[i], O_DIRECT_MULTIPLE, buffer_size * sizeof(T));
+            buckets[i] = (T*) malloc(buffer_size * sizeof(T));
             buffer_index[i] = 0;
         }
         while (true) {

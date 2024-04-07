@@ -138,6 +138,8 @@ void *ReadEntireFile(const std::string &file_name, size_t read_size) {
     void *buffer = malloc(read_size);
     int fd = open(file_name.c_str(), O_RDONLY | O_DIRECT);
     SYSCALL(fd);
-    SYSCALL(read(fd, buffer, read_size));
+    auto result_size = read(fd, buffer, read_size);
+    SYSCALL(result_size);
+    ASSERT((size_t)result_size == read_size, "Size mismatch for " << file_name << ": " << read_size << " attempted, got " << result_size);
     return buffer;
 }

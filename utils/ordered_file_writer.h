@@ -90,7 +90,7 @@ public:
      *
      * Do not submit arrays whose size is not a multiple of O_DIRECT_MULTIPLE unless necessary.
      * @param bucket_number
-     * @param pointer
+     * @param pointer Ownership of pointer will now be assumed by the writer, which will deallocate it using free.
      * @param count
      */
     void Write(size_t bucket_number, T *pointer, size_t count) {
@@ -148,11 +148,10 @@ private:
         explicit Bucket(std::string &file_name, size_t io_threshold) : max_requests(3), io_threshold(io_threshold) {
             io_uring_queue_init(3, &ring, IORING_SETUP_SQPOLL);
             request = new IOVectorRequest();
+            requests_created = 1;
             current_file = open(file_name.c_str(), O_WRONLY | O_DIRECT | O_CREAT, 0744);
             SYSCALL(current_file);
         }
-
-        Bucket(Bucket&&) = default;
 
         ~Bucket() {
             io_uring_queue_exit(&ring);
@@ -210,9 +209,15 @@ private:
             while (!pending_requests.empty() && requests_in_ring < 1) {
                 IOVectorRequest *ready_request = pending_requests.back();
                 pending_requests.pop_back();
-                io_uring_sqe sqe;
-                io_uring_sqe_set_data(&sqe, ready_request);
-                io_uring_prep_writev(&sqe, current_file, ready_request->io_vectors, ready_request->iovec_count, 0);
+                io_uring_sqe *sqe = io_uring_get_sqe(&ring);
+                if (sqe == nullptr) {
+                    [[unlikely]]
+                    LOG(ERROR) << "io_uring does not have enough sqe";
+                    return;
+                }
+                io_uring_sqe_set_data(sqe, ready_request);
+                io_uring_prep_writev(sqe, current_file, &ready_request->io_vectors[0], ready_request->iovec_count, file_size);
+                file_size += ready_request->current_size;
                 SYSCALL(io_uring_submit(&ring));
                 requests_in_ring++;
             }
@@ -246,18 +251,17 @@ private:
         void RequestReady(bool is_last_request = false) {
             if (request->current_size > 0) {
                 [[likely]]
-                file_size += request->current_size;
                 pending_requests.push_back(request);
                 ReapRing();
                 SubmitToRing();
             }
             if (is_last_request) {
                 [[unlikely]]
-                if (request != nullptr) {
-                    delete request;
+                if (request->current_size == 0) {
+                    completed_requests.push_back(request);
                 }
                 request = nullptr;
-            } else if (request->current_size > 0) {
+            } else {
                 request = NewRequest();
             }
         }
@@ -316,6 +320,7 @@ private:
             *(uint16_t*)(&write_buffer[target_write_size - METADATA_SIZE]) = (uint16_t)byte_diff;
             // FIXME: performance bottleneck here? parlay does not know to let a thread yield when it's doing
             //   synchronous IO
+            lseek64(current_file, file_size, SEEK_SET);
             SYSCALL(write(current_file, write_buffer, target_write_size));
             for (size_t i = 0 ; i < misaligned_pointers.size(); i++) {
                 free(misaligned_pointers[i].first);

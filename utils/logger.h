@@ -19,6 +19,10 @@
     << std::strerror(errno); \
 } while(0)
 
+#define ASSERT(expr, msg) do { \
+    if (__builtin_expect(!(expr), 0)) LOG(ERROR) << msg;\
+} while(0)
+
 void InitLogger();
 
 #endif //SORTING_LOGGER_H
