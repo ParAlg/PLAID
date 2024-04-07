@@ -93,13 +93,12 @@ void nop(void* ptr) {}
  */
 std::shared_ptr<size_t> GenerateSmallSample(const std::string &prefix, size_t n) {
     auto nums = (size_t *) malloc(n * sizeof(size_t));
-    for (size_t i = 0; i < n; i++) {
-        // just make numbers from 0 to n-1 for simplicity's sake
-        nums[i] = i;
+    {
+        auto perm = parlay::random_permutation(n);
+        parlay::parallel_for(0, n, [&](size_t i) {
+            nums[i] = perm[i];
+        });
     }
-    // shuffle these values, write them to disk, and once we're done writing, we can sort them again
-    std::shuffle(nums, nums + n, std::mt19937(std::random_device()()));
-
     UnorderedFileWriter<size_t> writer(prefix);
     size_t step = std::min(1UL << 20, n);
     for (size_t i = 0; i < n; i += step) {
@@ -107,9 +106,9 @@ std::shared_ptr<size_t> GenerateSmallSample(const std::string &prefix, size_t n)
     }
     writer.Close();
     writer.Wait();
-    for (size_t i = 0; i < n; i++) {
+    parlay::parallel_for(0, n, [&](size_t i) {
         nums[i] = i;
-    }
+    });
     return {nums, free};
 }
 
