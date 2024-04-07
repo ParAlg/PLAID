@@ -82,7 +82,7 @@ public:
             buckets[i].CleanUp();
             result_files[i].file_size = buckets[i].file_size;
             result_files[i].true_size = buckets[i].true_file_size;
-        });
+        }, 1);
     }
 
     /**
@@ -309,7 +309,7 @@ private:
             }
             size_t byte_diff = target_write_size - write_size;
 
-            uint8_t write_buffer[target_write_size];
+            uint8_t *write_buffer = (uint8_t *)malloc(target_write_size);
             size_t buffer_position = 0;
             for (size_t i = 0; i < misaligned_pointers.size(); i++) {
                 auto [pointer, count] = misaligned_pointers[i];
@@ -322,6 +322,7 @@ private:
             //   synchronous IO
             lseek64(current_file, file_size, SEEK_SET);
             SYSCALL(write(current_file, write_buffer, target_write_size));
+            free(write_buffer);
             for (size_t i = 0 ; i < misaligned_pointers.size(); i++) {
                 free(misaligned_pointers[i].first);
             }

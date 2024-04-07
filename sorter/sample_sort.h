@@ -48,6 +48,7 @@ private:
         size_t total_size = size_prefix_sum[file_list.size() - 1];
         // n is the number of elements in all files
         size_t n = total_size / sizeof(T);
+        DLOG(INFO) << "Found " << n << " elements in input files.";
         if (num_samples > n) {
             [[unlikely]]
             LOG(ERROR) << "Sample size is " << num_samples << " but we only have " << n << " elements";
@@ -57,7 +58,6 @@ private:
         // (https://cs.stackexchange.com/questions/104930/efficient-n-choose-k-random-sampling)
         std::set<size_t> sample_indices;
         std::random_device rd;
-        // FIXME: seed fixed for debugging purposes
         std::mt19937_64 rng(rd());
         std::uniform_int_distribution<size_t> dis(0, n);
         for (size_t i = 0; i < num_samples; i++) {
@@ -84,7 +84,7 @@ private:
             // avoid concurrent access to list of samples
             std::lock_guard<std::mutex> lock(result_lock);
             result.push_back(*(T*)(buffer));
-        });
+        }, 1);
         return result;
     }
 
@@ -141,6 +141,7 @@ private:
                     buckets[bucket_index] = (T*)malloc(buffer_size * sizeof(T));
                 }
             }
+            free(data);
         }
         // cleanup partially full buckets
         for (size_t i = 0; i < num_buckets; i++) {
@@ -209,6 +210,7 @@ public:
     std::vector<FileInfo> Sort(std::vector<FileInfo> &input_files,
                                const std::string& result_prefix,
                                Comparator comp) {
+        DLOG(INFO) << "Performing sample sort with " << input_files.size() << " files";
         GetFileInfo(input_files);
         reader.PrepFiles(input_files);
         reader.Start();
@@ -220,7 +222,7 @@ public:
         const auto sorted_pivots = parlay::sort(samples, comp);
         parlay::parallel_for(0, THREAD_COUNT, [&](int i) {
             AssignToBucket(sorted_pivots, flush_threshold, comp);
-        });
+        }, 1);
         // retrieve buckets from intermediate_writer
         auto bucket_list = intermediate_writer.ReapResult();
         std::mutex bucket_list_lock;
@@ -250,7 +252,7 @@ public:
                 result_list[bucket_number].file_size = file_info.file_size;
                 result_list[bucket_number].true_size = file_info.true_size;
             }
-        });
+        }, 1);
 
         return result_list;
     }

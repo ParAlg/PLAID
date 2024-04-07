@@ -35,7 +35,7 @@ void CompareSortingResult(Iterator start, Iterator end, const std::vector<FileIn
             if (expected != actual) {
                 LOG(ERROR) << "Mismatch at index " << cur_index << ". Expected " << expected << ". Got " << actual;
                 mismatch_count++;
-                if (mismatch_count >= 100) {
+                if (mismatch_count >= 20) {
                     goto too_many_errors;
                 }
             }
@@ -82,6 +82,8 @@ void TestSampleSort() {
     CompareSortingResult<size_t>(all_nums.begin(), all_nums.end(), result_files);
 }
 
+void nop(void* ptr) {}
+
 /**
  * Write some small numbers to disk for testing purposes.
  *
@@ -90,19 +92,25 @@ void TestSampleSort() {
  * @return A pointer to the resulting numbers
  */
 std::shared_ptr<size_t> GenerateSmallSample(const std::string &prefix, size_t n) {
-    UnorderedFileWriter<size_t> writer(prefix);
-    auto nums = std::shared_ptr<size_t>((size_t *) malloc(n * sizeof(size_t)), free);
+    auto nums = (size_t *) malloc(n * sizeof(size_t));
     for (size_t i = 0; i < n; i++) {
-        // just make numbers from 1 to n for simplicity's sake
-        nums.get()[i] = i + 1;
+        // just make numbers from 0 to n-1 for simplicity's sake
+        nums[i] = i;
     }
     // shuffle these values, write them to disk, and once we're done writing, we can sort them again
-    std::shuffle(nums.get(), nums.get() + n, std::mt19937(std::random_device()()));
-    writer.Push(nums, n);
+    std::shuffle(nums, nums + n, std::mt19937(std::random_device()()));
+
+    UnorderedFileWriter<size_t> writer(prefix);
+    size_t step = std::min(1UL << 20, n);
+    for (size_t i = 0; i < n; i += step) {
+        writer.Push(std::shared_ptr<size_t>(nums + i, nop), std::min(step, n - i));
+    }
     writer.Close();
     writer.Wait();
-    std::sort(nums.get(), nums.get() + n);
-    return nums;
+    for (size_t i = 0; i < n; i++) {
+        nums[i] = i;
+    }
+    return {nums, free};
 }
 
 std::shared_ptr<size_t> GetDummyArray(size_t n = 4096) {

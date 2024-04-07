@@ -55,12 +55,14 @@ void GetFileInfo(std::vector<FileInfo> &info) {
             SYSCALL(stat(info[i].file_name.c_str(), &stat_buf));
             info[i].file_size = stat_buf.st_size;
         }
+        // FIXME: all files should have end-of-file marker?
+        info[i].true_size = info[i].file_size;
         if (info[i].true_size == 0) {
             uint8_t buffer[O_DIRECT_MULTIPLE];
             ReadFileOnce(info[i].file_name, buffer, info[i].file_size - O_DIRECT_MULTIPLE);
             info[i].true_size = info[i].file_size - *(uint16_t *) (buffer + O_DIRECT_MULTIPLE - METADATA_SIZE);
         }
-    });
+    }, 1);
 }
 
 /**

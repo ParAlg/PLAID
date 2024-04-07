@@ -7,6 +7,7 @@
 
 #include "utils/logger.h"
 #include "config.h"
+#include "utils/file_utils.h"
 #include <thread>
 #include <condition_variable>
 #include <mutex>
@@ -107,9 +108,7 @@ private:
         std::shared_ptr<T> data;
 
         explicit OpenedFile(const std::string &&name) {
-            file_name = (char*)malloc(name.size() + 1);
-            strcpy(file_name, name.c_str());
-            fd = open(file_name, O_DIRECT | O_WRONLY | O_CREAT, 0744);
+            fd = open(name.c_str(), O_DIRECT | O_WRONLY | O_CREAT, 0744);
             SYSCALL(fd);
         }
 
@@ -129,7 +128,6 @@ private:
         size_t file_counter = 0, completed_files = 0, busy_files = 0;
         std::deque<OpenedFile *> free_files;
 
-        char file_name_buffer[255];
         const auto file_name_prefix = writer->prefix.c_str();
 
         // FIXME: do we need to acquire a lock for the second check?
@@ -160,16 +158,16 @@ private:
                     break;
                 }
                 // submit this IO request to ring
-                struct io_uring_sqe *submission_queue_entry;
-                submission_queue_entry = io_uring_get_sqe(&ring);
-                if (submission_queue_entry == nullptr) {
+                struct io_uring_sqe *sqe;
+                sqe = io_uring_get_sqe(&ring);
+                if (sqe == nullptr) {
+                    [[unlikely]]
                     LOG(ERROR) << "Request obtained but is unable to be fulfilled because the io_uring buffer is full.";
                     break;
                 }
                 if (free_files.empty()) {
-                    sprintf(file_name_buffer, "/mnt/ssd%lu/%s%08lu",
-                            file_counter % SSD_COUNT, file_name_prefix, file_counter);
-                    auto new_file = new OpenedFile(file_name_buffer);
+                    auto file_name = GetFileName(file_name_prefix, file_counter);
+                    auto new_file = new OpenedFile(std::move(file_name));
                     file_counter++;
                     free_files.push_back(new_file);
                 }
@@ -177,9 +175,9 @@ private:
                 free_files.pop_front();
                 file->SetData(std::move(request.data));
                 size_t num_bytes = request.size * sizeof(T);
+                io_uring_prep_write(sqe, file->fd, file->data.get(), num_bytes, file->bytes_written);
                 file->bytes_written += num_bytes;
-                io_uring_prep_write(submission_queue_entry, file->fd, file->data.get(), num_bytes, 0);
-                io_uring_sqe_set_data(submission_queue_entry, file);
+                io_uring_sqe_set_data(sqe, file);
                 SYSCALL(io_uring_submit(&ring));
                 busy_files++;
             }
@@ -207,7 +205,7 @@ private:
             delete file;
         }
         io_uring_queue_exit(&ring);
-        DLOG(INFO) << "FileWriter worker thread exited";
+        DLOG(INFO) << "FileWriter worker thread exited. " << file_counter << " files created.";
 
         writer->num_files = completed_files;
     }
