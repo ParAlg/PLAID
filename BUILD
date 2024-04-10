@@ -7,6 +7,15 @@ cc_binary(
     ],
 )
 
+cc_binary(
+    name = "speed_test",
+    srcs = ["speed-test.cpp"],
+    deps = [
+        "//utils:io_utils",
+        "//utils:logger",
+    ],
+)
+
 cc_library(
     name = "config",
     hdrs = ["config.h"],

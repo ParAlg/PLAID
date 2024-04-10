@@ -30,8 +30,9 @@ template<typename T>
 class UnorderedFileWriter {
 public:
     explicit UnorderedFileWriter(std::string prefix,
-                                 int buffer_size = IO_URING_BUFFER_SIZE) : prefix(std::move(prefix)) {
-        worker_thread = std::make_unique<std::thread>(RunFileWriterWorker, this, buffer_size);
+                                 size_t buffer_size = IO_URING_BUFFER_SIZE,
+                                 size_t io_uring_size = IO_URING_BUFFER_SIZE) : prefix(std::move(prefix)) {
+        worker_thread = std::make_unique<std::thread>(RunFileWriterWorker, this, buffer_size, io_uring_size);
     }
 
     ~UnorderedFileWriter() {
@@ -122,13 +123,14 @@ private:
         }
     };
 
-    static void RunFileWriterWorker(UnorderedFileWriter *writer, const size_t buffer_size) {
+    static void RunFileWriterWorker(UnorderedFileWriter *writer, const size_t buffer_size, const size_t io_uring_size) {
         struct io_uring ring;
-        SYSCALL(io_uring_queue_init(buffer_size, &ring, IORING_SETUP_SQPOLL));
+        SYSCALL(io_uring_queue_init(io_uring_size, &ring, IORING_SETUP_SQPOLL));
         size_t file_counter = 0, completed_files = 0, busy_files = 0;
         std::deque<OpenedFile *> free_files;
 
         const auto file_name_prefix = writer->prefix.c_str();
+        size_t sqe_unavailable_count = 0;
 
         // FIXME: do we need to acquire a lock for the second check?
         while (writer->IsOpen() || !writer->IsEmpty()) {
@@ -159,11 +161,14 @@ private:
                 }
                 // submit this IO request to ring
                 struct io_uring_sqe *sqe;
-                sqe = io_uring_get_sqe(&ring);
-                if (sqe == nullptr) {
-                    [[unlikely]]
-                    LOG(ERROR) << "Request obtained but is unable to be fulfilled because the io_uring buffer is full.";
-                    break;
+                while (true) {
+                    sqe = io_uring_get_sqe(&ring);
+                    if (sqe == nullptr) {
+                        [[unlikely]]
+                        sqe_unavailable_count++;
+                    } else {
+                        break;
+                    }
                 }
                 if (free_files.empty()) {
                     auto file_name = GetFileName(file_name_prefix, file_counter);
@@ -181,6 +186,11 @@ private:
                 SYSCALL(io_uring_submit(&ring));
                 busy_files++;
             }
+        }
+        if (sqe_unavailable_count > 0) {
+            [[unlikely]]
+            LOG(WARNING) << "io_uring sqe entires were unavailable " << sqe_unavailable_count << " times. " <<
+                         "Consider expanding the ring buffer.";
         }
 
         // Wait for remaining IOs to finish before destroying the ring
