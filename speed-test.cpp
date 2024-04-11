@@ -9,7 +9,7 @@ int main() {
     const std::string prefix = "test_files";
     const size_t TOTAL_WRITE_SIZE = 1UL << 40;
     const size_t SINGLE_WRITE_SIZE = 4 * (1UL << 20);
-    UnorderedFileWriter<Type> writer(prefix, 1000, 1000);
+    UnorderedFileWriter<Type> writer(prefix, 4000, 4000, 5);
     size_t n = SINGLE_WRITE_SIZE / sizeof(Type);
 
     LOG(INFO) << "Preparing data";

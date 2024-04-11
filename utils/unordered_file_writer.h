@@ -31,13 +31,17 @@ class UnorderedFileWriter {
 public:
     explicit UnorderedFileWriter(std::string prefix,
                                  size_t buffer_size = IO_URING_BUFFER_SIZE,
-                                 size_t io_uring_size = IO_URING_BUFFER_SIZE) : prefix(std::move(prefix)) {
-        worker_thread = std::make_unique<std::thread>(RunFileWriterWorker, this, buffer_size, io_uring_size);
+                                 size_t io_uring_size = IO_URING_BUFFER_SIZE,
+                                 size_t num_threads = 1) : prefix(std::move(prefix)) {
+        for (int i = 0; i < num_threads; i++) {
+            worker_threads.push_back(std::make_unique<std::thread>(RunFileWriterWorker, this, buffer_size, io_uring_size));
+        }
     }
 
     ~UnorderedFileWriter() {
         Close();
         Wait();
+        DLOG(INFO) << "FileWriter worker thread exited. " << num_files << " files created.";
     }
 
     void Push(std::shared_ptr<T> data, size_t size) {
@@ -86,16 +90,19 @@ public:
      * Block until file intermediate_writer finishes and return the number of files
      * @return
      */
-    void Wait() {
-        if (worker_thread->joinable()) {
-            worker_thread->join();
+    size_t Wait() {
+        for (auto &thread : worker_threads) {
+            if(thread->joinable()) {
+                thread->join();
+            }
         }
+        return num_files;
     }
 
 private:
     bool is_open = true;
-    int num_files = 0;
-    std::unique_ptr<std::thread> worker_thread;
+    std::atomic<size_t> num_files = 0;
+    std::vector<std::unique_ptr<std::thread>> worker_threads;
     std::string prefix;
     // TODO: if this ever becomes the bottleneck, we can use a lock-free queue instead
     std::deque<WriteRequest<T>> wait_queue;
@@ -126,7 +133,7 @@ private:
     static void RunFileWriterWorker(UnorderedFileWriter *writer, const size_t buffer_size, const size_t io_uring_size) {
         struct io_uring ring;
         SYSCALL(io_uring_queue_init(io_uring_size, &ring, IORING_SETUP_SQPOLL));
-        size_t file_counter = 0, completed_files = 0, busy_files = 0;
+        size_t completed_files = 0, busy_files = 0;
         std::deque<OpenedFile *> free_files;
 
         const auto file_name_prefix = writer->prefix.c_str();
@@ -171,9 +178,9 @@ private:
                     }
                 }
                 if (free_files.empty()) {
+                    size_t file_counter = writer->num_files++;
                     auto file_name = GetFileName(file_name_prefix, file_counter);
                     auto new_file = new OpenedFile(std::move(file_name));
-                    file_counter++;
                     free_files.push_back(new_file);
                 }
                 auto file = free_files.front();
@@ -215,9 +222,6 @@ private:
             delete file;
         }
         io_uring_queue_exit(&ring);
-        DLOG(INFO) << "FileWriter worker thread exited. " << file_counter << " files created.";
-
-        writer->num_files = completed_files;
     }
 };
 
