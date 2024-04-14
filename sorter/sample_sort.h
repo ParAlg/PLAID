@@ -13,6 +13,7 @@
 
 #include "absl/container/btree_map.h"
 #include "parlay/primitives.h"
+#include "parlay/internal/get_time.h"
 
 #include "config.h"
 #include "utils/file_utils.h"
@@ -48,7 +49,7 @@ private:
         size_t total_size = size_prefix_sum[file_list.size() - 1];
         // n is the number of elements in all files
         size_t n = total_size / sizeof(T);
-        DLOG(INFO) << "Found " << n << " elements in input files.";
+        DLOG(INFO) << "Found " << n << " elements in input files";
         if (num_samples > n) {
             [[unlikely]]
             LOG(ERROR) << "Sample size is " << num_samples << " but we only have " << n << " elements";
@@ -211,6 +212,7 @@ public:
                                const std::string& result_prefix,
                                Comparator comp) {
         DLOG(INFO) << "Performing sample sort with " << input_files.size() << " files";
+        parlay::internal::timer timer("Sample sort", true);
         GetFileInfo(input_files);
         reader.PrepFiles(input_files);
         reader.Start();
@@ -218,13 +220,16 @@ public:
         size_t flush_threshold = 4 << 20;
         // FIXME: change this file name to a different one (possibly randomized?)
         intermediate_writer.Initialize("spfx_", num_samples + 1, 1 << 20);
+        timer.next("Before sampling");
         auto samples = GetSamples(input_files, num_samples);
         const auto sorted_pivots = parlay::sort(samples, comp);
+        timer.next("After sampling and before assign to bucket");
         parlay::parallel_for(0, THREAD_COUNT, [&](int i) {
             AssignToBucket(sorted_pivots, flush_threshold, comp);
         }, 1);
         // retrieve buckets from intermediate_writer
         auto bucket_list = intermediate_writer.ReapResult();
+        timer.next("After assign to bucket and before phase 2");
         std::mutex bucket_list_lock;
         std::vector<FileInfo> result_list(num_samples + 1);
         // FIXME: should allow as much parallelism as internal memory allows; need to calculate memory budget
@@ -253,7 +258,8 @@ public:
                 result_list[bucket_number].true_size = file_info.true_size;
             }
         }, 1);
-
+        timer.next("Sorting complete");
+        timer.stop();
         return result_list;
     }
 };

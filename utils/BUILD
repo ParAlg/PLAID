@@ -76,3 +76,10 @@ cc_library(
         "@parlaylib//parlay:primitives",
     ],
 )
+
+cc_library(
+    name = "timer",
+    srcs = ["timer.h"],
+    visibility = ["//visibility:public"],
+    deps = ["@parlaylib//parlay/internal:get_time"],
+)

@@ -33,7 +33,7 @@ public:
                                  size_t buffer_size = IO_URING_BUFFER_SIZE,
                                  size_t io_uring_size = IO_URING_BUFFER_SIZE,
                                  size_t num_threads = 1) : prefix(std::move(prefix)) {
-        for (int i = 0; i < num_threads; i++) {
+        for (size_t i = 0; i < num_threads; i++) {
             worker_threads.push_back(std::make_unique<std::thread>(RunFileWriterWorker, this, buffer_size, io_uring_size));
         }
     }

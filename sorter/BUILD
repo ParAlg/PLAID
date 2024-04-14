@@ -8,5 +8,6 @@ cc_library(
         "//utils:logger",
         "@com_google_absl//absl/container:btree",
         "@parlaylib//parlay:primitives",
+        "@parlaylib//parlay/internal:get_time",
     ],
 )
