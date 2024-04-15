@@ -37,7 +37,7 @@ public:
      */
     OrderedFileWriter() = default;
 
-    OrderedFileWriter(std::string &prefix, size_t num_buckets, size_t flush_threshold) {
+    OrderedFileWriter(const std::string &prefix, size_t num_buckets, size_t flush_threshold) {
         Initialize(prefix, num_buckets, flush_threshold);
     }
 
@@ -94,6 +94,10 @@ public:
      * @param count
      */
     void Write(size_t bucket_number, T *pointer, size_t count) {
+        if (bucket_number >= num_buckets) {
+            [[unlikely]]
+            LOG(ERROR) << "Invalid bucket number";
+        }
         buckets[bucket_number].AddRequest(pointer, count);
     }
 
@@ -114,13 +118,15 @@ private:
         iovec io_vectors[IO_VECTOR_SIZE];
         uint32_t iovec_count = 0;
 
-        void FreePointers() {
+        void Reset() {
             for (size_t i = 0; i < iovec_count; i++) {
                 // FIXME: this assumes that the pointer is constructed with a malloc instead of
                 //   (1) a new T[]
                 //   (2) a new T
                 free(io_vectors[i].iov_base);
             }
+            current_size = 0;
+            iovec_count = 0;
         }
     };
 
@@ -146,7 +152,7 @@ private:
 
         // FIXME: magic numbers here
         explicit Bucket(std::string &file_name, size_t io_threshold) : max_requests(3), io_threshold(io_threshold) {
-            io_uring_queue_init(3, &ring, IORING_SETUP_SQPOLL);
+            io_uring_queue_init(3, &ring, 0);
             request = new IOVectorRequest();
             requests_created = 1;
             current_file = open(file_name.c_str(), O_WRONLY | O_DIRECT | O_CREAT, 0744);
@@ -184,7 +190,7 @@ private:
                 auto completed_request = (IOVectorRequest *) io_uring_cqe_get_data(cqe);
                 requests_in_ring--;
                 completed_requests.push_back(completed_request);
-                completed_request->FreePointers();
+                completed_request->Reset();
             }
         }
 
