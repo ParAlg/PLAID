@@ -36,7 +36,7 @@ public:
 
     ~UnorderedFileReader() {
         is_open = false;
-        worker_thread->join();
+        Wait();
     }
 
     void SetBufferQueueSize(size_t new_size) {
@@ -52,10 +52,14 @@ public:
     }
 
     void Start(size_t array_size = 1 << 20,
-               size_t buffer_size = IO_URING_BUFFER_SIZE,
-               size_t io_uring_size = IO_URING_BUFFER_SIZE) {
-        worker_thread = std::make_unique<std::thread>(RunFileReaderWorker, this, files,
-                                                      array_size, io_uring_size, buffer_size);
+               size_t max_outstanding_requests = IO_URING_BUFFER_SIZE,
+               size_t io_uring_size = IO_URING_BUFFER_SIZE,
+               size_t num_io_threads = 1) {
+        for (size_t i = 0; i < num_io_threads; i++) {
+            worker_threads.push_back(
+                    std::make_unique<std::thread>(RunFileReaderWorker, this, files,
+                                                  array_size, io_uring_size, max_outstanding_requests));
+        }
     }
 
     /**
@@ -114,7 +118,11 @@ public:
      * Block until file reader finishes
      */
     void Wait() {
-        worker_thread->join();
+        for (auto &t : worker_threads) {
+            if (t->joinable()) {
+                t->join();
+            }
+        }
     }
 
 private:
@@ -127,7 +135,7 @@ private:
     // files that are available to tbe reused
     std::vector<FileInfo> available_files;
     // a single worker thread for managing file reading
-    std::unique_ptr<std::thread> worker_thread;
+    std::vector<std::unique_ptr<std::thread>> worker_threads;
     // TODO: if this ever becomes the bottleneck, we can use a lock-free queue instead
     // a buffer queue containing data read from disk
     std::deque<std::pair<T*, size_t>> buffer_queue;
@@ -157,7 +165,7 @@ private:
                                     std::vector<FileInfo> available_files,
                                     const size_t read_array_size,
                                     const size_t io_uring_size,
-                                    const size_t buffer_size) {
+                                    const size_t max_outstanding_requests) {
         struct io_uring ring;
         SYSCALL(io_uring_queue_init(io_uring_size, &ring, IORING_SETUP_SQPOLL));
         size_t total_files = available_files.size();
@@ -196,7 +204,7 @@ private:
                 }
             }
             // keep submitting new read requests to the io_uring until we are about to exceed to max size of the buffer
-            while (busy_files < buffer_size) {
+            while (busy_files < max_outstanding_requests) {
                 if (free_files.empty()) {
                     // if no opened file is available, we open a new file
                     if (available_files.empty()) {

@@ -36,8 +36,8 @@ void UnorderedIOTest() {
     LOG(INFO) << "Files found";
     UnorderedFileReader<Type> reader;
     reader.PrepFiles(files);
-    reader.SetBufferQueueSize(1000);
-    reader.Start(n, 1000, 1000);
+    reader.SetBufferQueueSize(10000);
+    reader.Start(n, 4096, 4096);
     for (size_t i = 0; i < TOTAL_WRITE_SIZE / SINGLE_WRITE_SIZE; i++) {
         auto [ptr, size] = reader.Poll();
         if (size != n) {
