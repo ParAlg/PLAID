@@ -5,28 +5,56 @@
 #include "absl/log/log.h"
 #include "utils/ordered_file_writer.h"
 #include "parlay/random.h"
+#include "utils/unordered_file_reader.h"
 
-void UnorderedFileWriterTest() {
+void UnorderedIOTest() {
     using Type = long long;
     const std::string prefix = "test_files";
-    const size_t TOTAL_WRITE_SIZE = 1UL << 40;
+    const size_t TOTAL_WRITE_SIZE = 1UL << 35;
     const size_t SINGLE_WRITE_SIZE = 4 * (1UL << 20);
-    UnorderedFileWriter<Type> writer(prefix, 4000, 4000, 5);
     size_t n = SINGLE_WRITE_SIZE / sizeof(Type);
+    std::shared_ptr<Type> array;
+    {
+        UnorderedFileWriter<Type> writer(prefix, 4000, 4000, 5);
 
-    LOG(INFO) << "Preparing data";
-    auto array = std::shared_ptr<Type>((Type*)malloc(SINGLE_WRITE_SIZE), free);
-    for (Type i = 0; i < (Type)n; i++) {
-        array.get()[i] = i * i - 5 * i - 1;
+        LOG(INFO) << "Preparing data";
+        array = std::shared_ptr<Type>((Type *) malloc(SINGLE_WRITE_SIZE), free);
+        for (Type i = 0; i < (Type) n; i++) {
+            array.get()[i] = i * i - 5 * i - 1;
+        }
+        LOG(INFO) << "Starting writer loop";
+        for (size_t i = 0; i < TOTAL_WRITE_SIZE / SINGLE_WRITE_SIZE; i++) {
+            writer.Push(array, n);
+        }
+        writer.Close();
+        LOG(INFO) << "Waiting for completion";
+        writer.Wait();
     }
-    LOG(INFO) << "Starting writer loop";
+    LOG(INFO) << "Done writing. Now looking for these files.";
+
+    auto files = FindFiles(prefix);
+    LOG(INFO) << "Files found";
+    UnorderedFileReader<Type> reader;
+    reader.PrepFiles(files);
+    reader.SetBufferQueueSize(1000);
+    reader.Start(n, 1000, 1000);
     for (size_t i = 0; i < TOTAL_WRITE_SIZE / SINGLE_WRITE_SIZE; i++) {
-        writer.Push(array, n);
+        auto [ptr, size] = reader.Poll();
+        if (size != n) {
+            LOG(ERROR) << "Read size is expected to be the same";
+            exit(0);
+        }
+        auto result = memcmp(ptr, array.get(), SINGLE_WRITE_SIZE);
+        if (result != 0) {
+            LOG(ERROR) << "Expected two arrays to be the same";
+            exit(0);
+        }
     }
-    writer.Close();
-    LOG(INFO) << "Waiting for completion";
-    writer.Wait();
-    LOG(INFO) << "Done writing";
+    auto [ptr, size] = reader.Poll();
+    if (ptr != nullptr || size != 0) {
+        LOG(ERROR) << "Received more input than expected";
+    }
+    LOG(INFO) << "File reader completed";
 }
 
 void OrderedFileWriterTest() {
@@ -41,8 +69,8 @@ void OrderedFileWriterTest() {
     parlay::random_generator gen;
     parlay::parallel_for(0, TOTAL_WRITE_SIZE / SINGLE_WRITE_SIZE, [&](size_t i) {
         std::uniform_int_distribution<size_t> dis(0, NUM_BUCKETS - 1);
-        auto array = (Type*)malloc(SINGLE_WRITE_SIZE);
-        for (Type index = 0; index < (Type)n; index++) {
+        auto array = (Type *) malloc(SINGLE_WRITE_SIZE);
+        for (Type index = 0; index < (Type) n; index++) {
             array[index] = index * index - 5 * index - 1;
         }
         auto r = gen[i];
@@ -55,5 +83,5 @@ void OrderedFileWriterTest() {
 }
 
 int main() {
-    OrderedFileWriterTest();
+    UnorderedIOTest();
 }

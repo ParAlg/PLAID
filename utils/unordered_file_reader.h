@@ -51,8 +51,11 @@ public:
         this->files = file_list;
     }
 
-    void Start(size_t array_size = 1 << 20, size_t io_uring_buffer_size = IO_URING_BUFFER_SIZE) {
-        worker_thread = std::make_unique<std::thread>(RunFileReaderWorker, this, files, array_size, io_uring_buffer_size);
+    void Start(size_t array_size = 1 << 20,
+               size_t buffer_size = IO_URING_BUFFER_SIZE,
+               size_t io_uring_size = IO_URING_BUFFER_SIZE) {
+        worker_thread = std::make_unique<std::thread>(RunFileReaderWorker, this, files,
+                                                      array_size, io_uring_size, buffer_size);
     }
 
     /**
@@ -146,16 +149,17 @@ private:
         }
 
         ~OpenedFile() {
-            close(fd);
+            SYSCALL(close(fd));
         }
     };
 
     static void RunFileReaderWorker(UnorderedFileReader *reader,
                                     std::vector<FileInfo> available_files,
                                     const size_t read_array_size,
+                                    const size_t io_uring_size,
                                     const size_t buffer_size) {
         struct io_uring ring;
-        SYSCALL(io_uring_queue_init(buffer_size, &ring, IORING_SETUP_SQPOLL));
+        SYSCALL(io_uring_queue_init(io_uring_size, &ring, IORING_SETUP_SQPOLL));
         size_t total_files = available_files.size();
         size_t completed_files = 0, busy_files = 0;
         std::deque<OpenedFile *> free_files;

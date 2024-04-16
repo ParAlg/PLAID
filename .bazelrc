@@ -12,4 +12,5 @@ build:asan --linkopt -fsanitize=address
 
 build:profile --copt -O2
 build:profile --copt -g
+build:profile --copt -fno-omit-frame-pointer
 build:profile --strip=never

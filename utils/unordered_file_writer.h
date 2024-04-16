@@ -111,7 +111,6 @@ private:
 
     struct OpenedFile {
         int fd;
-        char *file_name;
         size_t bytes_written = 0;
         std::shared_ptr<T> data;
 
@@ -125,8 +124,7 @@ private:
         }
 
         ~OpenedFile() {
-            close(fd);
-            free(file_name);
+            SYSCALL(close(fd));
         }
     };
 

@@ -94,7 +94,7 @@ void ReadFileOnce(const std::string &file_name, void *buffer, size_t offset) {
     auto res = lseek64(fd, (long) offset, SEEK_SET);
     SYSCALL(res);
     SYSCALL(read(fd, buffer, O_DIRECT_MULTIPLE));
-    close(fd);
+    SYSCALL(close(fd));
 }
 
 /**
@@ -122,7 +122,7 @@ void ReadFileOnce(const std::string &file_name, void *buffer, size_t start, size
     uint8_t temp_buffer[aligned_read_size];
     SYSCALL(read(fd, temp_buffer, O_DIRECT_MULTIPLE));
     memcpy(buffer, temp_buffer + (start - start_aligned), read_size);
-    close(fd);
+    SYSCALL(close(fd));
 }
 
 /**
