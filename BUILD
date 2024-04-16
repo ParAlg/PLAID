@@ -16,6 +16,18 @@ cc_binary(
     ],
 )
 
+cc_binary(
+    name = "io_uring_test",
+    srcs = ["io_uring_test.cpp"],
+    linkopts = [
+        "-luring",
+    ],
+    deps = [
+        "//utils:logger",
+        "@parlaylib//parlay/internal:get_time",
+    ],
+)
+
 cc_library(
     name = "config",
     hdrs = ["config.h"],
