@@ -8,6 +8,7 @@
 #include <cerrno>
 #include <cstring>
 #include "absl/log/log.h"
+#include "absl/log/check.h"
 
 /**
  * Macro for error checking after doing a system call. If an error is produced, print the resulting (negative)

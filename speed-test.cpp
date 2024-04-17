@@ -15,7 +15,7 @@ void UnorderedIOTest() {
     size_t n = SINGLE_WRITE_SIZE / sizeof(Type);
     std::shared_ptr<Type> array;
     {
-        UnorderedFileWriter<Type> writer(prefix, 4000, 4000, 5);
+        UnorderedFileWriter<Type> writer(prefix, 4000, 4000, 2);
 
         LOG(INFO) << "Preparing data";
         array = std::shared_ptr<Type>((Type *) malloc(SINGLE_WRITE_SIZE), free);
@@ -36,7 +36,7 @@ void UnorderedIOTest() {
     LOG(INFO) << "Files found";
     UnorderedFileReader<Type> reader;
     reader.PrepFiles(files);
-    reader.Start(n, 4096, 4096);
+    reader.Start(n, 4096, 4096, 25);
     for (size_t i = 0; i < TOTAL_WRITE_SIZE / SINGLE_WRITE_SIZE; i++) {
         auto [ptr, size] = reader.Poll();
         if (size != n) {
@@ -48,6 +48,7 @@ void UnorderedIOTest() {
             LOG(ERROR) << "Expected two arrays to be the same";
             exit(0);
         }
+        free(ptr);
     }
     auto [ptr, size] = reader.Poll();
     if (ptr != nullptr || size != 0) {

@@ -55,9 +55,15 @@ public:
                size_t max_outstanding_requests = IO_URING_BUFFER_SIZE,
                size_t io_uring_size = IO_URING_BUFFER_SIZE,
                size_t num_io_threads = 1) {
+        CHECK(num_io_threads > 0) << "Need at least 1 thread";
+        active_threads = (int)num_io_threads;
         for (size_t i = 0; i < num_io_threads; i++) {
+            std::vector<FileInfo> file_list;
+            for (size_t j = i; j < files.size(); j += num_io_threads) {
+                file_list.push_back(files[j]);
+            }
             worker_threads.push_back(
-                    std::make_unique<std::thread>(RunFileReaderWorker, this, files,
+                    std::make_unique<std::thread>(RunFileReaderWorker, this, std::move(file_list),
                                                   array_size, io_uring_size, max_outstanding_requests));
         }
     }
@@ -111,7 +117,7 @@ public:
     }
 
     bool IsOpen() {
-        return is_open;
+        return is_open && active_threads > 0;
     }
 
     /**
@@ -128,6 +134,7 @@ public:
 private:
     // whether the file reader is actively running
     bool is_open = true;
+    std::atomic<int> active_threads;
     // list of files to read
     std::vector<FileInfo> files;
     // size of the buffer queue; larger values may improve performance at the cost of increased memory usage
@@ -147,9 +154,8 @@ private:
      */
     struct OpenedFile {
         int fd;
-        size_t bytes_read = 0, current_read_size = 0;
+        size_t bytes_completed = 0, bytes_issued = 0;
         size_t file_size;
-        T* data;
 
         OpenedFile(const std::string& name, size_t file_size) : file_size(file_size) {
             fd = open(name.c_str(), O_DIRECT | O_RDONLY);
@@ -161,21 +167,38 @@ private:
         }
     };
 
+    struct ReadRequest {
+        size_t read_size;
+        OpenedFile *file;
+        T* data;
+    };
+
     static void RunFileReaderWorker(UnorderedFileReader *reader,
-                                    std::vector<FileInfo> available_files,
+                                    std::vector<FileInfo> &&all_files,
                                     const size_t read_array_size,
                                     const size_t io_uring_size,
                                     const size_t max_outstanding_requests) {
         struct io_uring ring;
         SYSCALL(io_uring_queue_init(io_uring_size, &ring, IORING_SETUP_SQPOLL));
-        size_t total_files = available_files.size();
-        size_t completed_files = 0, busy_files = 0;
-        std::deque<OpenedFile *> free_files;
+
+        std::deque<OpenedFile*> available_files;
+        std::vector<OpenedFile*> completed_files;
+        for (auto & file : all_files) {
+            available_files.push_back(new OpenedFile(file.file_name, file.file_size));
+        }
+
+        size_t outstanding_requests = 0;
+        auto *request_pool = (ReadRequest*)malloc(max_outstanding_requests * sizeof(ReadRequest));
+        std::vector<ReadRequest*> available_requests;
+        available_requests.reserve(max_outstanding_requests);
+        for (size_t i = 0; i < max_outstanding_requests; i++) {
+            available_requests.push_back(request_pool + i);
+        }
 
         // if we haven't finished all the files and the reader is still open, keep looping
-        while (completed_files < total_files && reader->is_open) {
+        while (completed_files.size() < all_files.size() && reader->is_open) {
             // reap io_uring result until there's nothing to reap
-            while (busy_files > 0) {
+            while (outstanding_requests > 0) {
                 // wait for 0 seconds for the cqe
                 struct io_uring_cqe *cqe;
                 struct __kernel_timespec wait_time{0, 0};
@@ -183,20 +206,16 @@ private:
                 if (wait_result == 0) {
                     // process this cqe
                     SYSCALL(cqe->res);
-                    auto *file = (OpenedFile *) io_uring_cqe_get_data(cqe);
-                    busy_files--;
+                    auto *request = (ReadRequest *) io_uring_cqe_get_data(cqe);
                     // add data to buffer queue
-                    reader->Push(file->data, file->current_read_size / sizeof(T));
-                    file->data = nullptr;
-                    file->bytes_read += file->current_read_size;
-                    // cleanup file if we have exhausted all the data in it
-                    if (file->bytes_read >= file->file_size) {
-                        delete file;
-                        completed_files++;
-                    } else {
-                        // file is free to be read again
-                        free_files.push_back(file);
+                    reader->Push(request->data, request->read_size / sizeof(T));
+                    auto *file = request->file;
+                    file->bytes_completed += request->read_size;
+                    if (file->bytes_completed == file->file_size) {
+                        completed_files.push_back(file);
                     }
+                    available_requests.push_back(request);
+                    outstanding_requests--;
                     io_uring_cqe_seen(&ring, cqe);
                 } else {
                     // nothing to reap, break
@@ -204,46 +223,49 @@ private:
                 }
             }
             // keep submitting new read requests to the io_uring until we are about to exceed to max size of the buffer
-            while (busy_files < max_outstanding_requests) {
-                if (free_files.empty()) {
-                    // if no opened file is available, we open a new file
-                    if (available_files.empty()) {
-                        break;
-                    }
-                    auto file_info = available_files.back();
-                    available_files.pop_back();
-                    free_files.push_back(new OpenedFile(file_info.file_name, file_info.file_size));
-                }
+            while (!available_requests.empty() && !available_files.empty()) {
+                auto request = available_requests.back();
+                available_requests.pop_back();
+
+                auto file = available_files.front();
+                available_files.pop_front();
+                request->file = file;
+                auto read_size = std::min(read_array_size * sizeof(T), file->file_size - file->bytes_issued);
+                request->read_size = read_size;
+                request->data = (T*)malloc(read_size);
 
                 // issue a read on an opened file
                 struct io_uring_sqe *sqe;
                 sqe = io_uring_get_sqe(&ring);
-                // this should never happen if we never allow the number of concurrent reads to exceed the size of
-                // the io_uring buffer
                 if (sqe == nullptr) {
                     LOG(ERROR) << "Request obtained but is unable to be fulfilled because the io_uring buffer is full.";
                     break;
                 }
 
-                auto *file = free_files.front();
-                free_files.pop_front();
-
-                // either read the specified amount or the remaining size of the file
-                auto read_size = std::min(read_array_size * sizeof(T), file->file_size - file->bytes_read);
-                file->current_read_size = read_size;
-                // allocate memory
-                file->data = (T*)malloc(read_size);
-
                 // perform write
-                io_uring_prep_read(sqe, file->fd, file->data, read_size, file->bytes_read);
-                io_uring_sqe_set_data(sqe, file);
+                io_uring_prep_read(sqe, file->fd, request->data, read_size, file->bytes_issued);
+                io_uring_sqe_set_data(sqe, request);
                 io_uring_submit(&ring);
-                busy_files++;
+
+                file->bytes_issued += read_size;
+                // keep reusing this file if it's not done
+                if (file->bytes_issued != file->file_size) {
+                    available_files.push_back(file);
+                }
+                outstanding_requests++;
             }
         }
         // cleanup
         io_uring_queue_exit(&ring);
-        reader->Close();
+
+        free(request_pool);
+        CHECK(completed_files.size() == all_files.size())
+            << "Expected all files to be read when reader thread terminates";
+        for (auto &file : completed_files) {
+            delete file;
+        }
+
+        reader->active_threads--;
     }
 };
 
