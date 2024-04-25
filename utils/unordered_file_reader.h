@@ -17,6 +17,7 @@
 #include <utility>
 #include <iostream>
 #include <map>
+#include <fcntl.h>
 
 /**
  * Read a list of files in no particular order. File sizes are assumed to be multiples of O_DIRECT_MULTIPLE and
