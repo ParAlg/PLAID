@@ -57,6 +57,29 @@ void UnorderedIOTest() {
     LOG(INFO) << "File reader completed";
 }
 
+void ReadOnlyTest() {
+    auto files = FindFiles("test_files");
+    size_t expected_size = 0;
+    for (auto &file : files) {
+        expected_size += file.file_size;
+    }
+    LOG(INFO) << "Starting reading " << files.size() << " files " << expected_size << " bytes";
+    UnorderedFileReader<size_t> reader;
+    reader.PrepFiles(files);
+    reader.SetBufferQueueSize(1000);
+    reader.Start(1 << 20, 4096, 4096, 1);
+    while (true) {
+        auto [ptr, size] = reader.Poll();
+        if (ptr == nullptr || size == 0) {
+            break;
+        }
+        free(ptr);
+        expected_size -= size * sizeof(size_t);
+    }
+    CHECK(expected_size == 0) << "Still " << expected_size << " bytes remaining unread";
+    LOG(INFO) << "Done reading";
+}
+
 void OrderedFileWriterTest() {
     using Type = long long;
     const std::string prefix = "test_files";
@@ -82,6 +105,14 @@ void OrderedFileWriterTest() {
     LOG(INFO) << "Done writing";
 }
 
-int main() {
-    UnorderedIOTest();
+std::function<void(void)> test_functions[] = {UnorderedIOTest, ReadOnlyTest, OrderedFileWriterTest};
+
+int main(int argc, char **argv) {
+    if (argc != 2) {
+        std::cout << "Usage: " << argv[0] << " " << "<which test to perform>\n";
+        return 0;
+    }
+    int test_number = std::atoi(argv[1]);
+    std::cout << "Performing test_number " << test_number << '\n';
+    test_functions[test_number]();
 }
