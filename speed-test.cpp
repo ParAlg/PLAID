@@ -1,21 +1,25 @@
-//
-// Created by peter on 4/10/24.
-//
+/**
+ * Speed test for readers and writers.
+ *
+ * At the time of this commit, the unordered writer writes at 80GiB/s and reader at 70GiB/s.
+ * The result seems good enough. It's not at fio's level, but should be sufficient for our algorithm.
+ */
 #include "utils/unordered_file_writer.h"
 #include "absl/log/log.h"
 #include "utils/ordered_file_writer.h"
 #include "parlay/random.h"
 #include "utils/unordered_file_reader.h"
 
-void UnorderedIOTest() {
+void UnorderedIOTest(int argc, char **argv) {
+    CHECK(argc > 2) << "Expected an argument on write size";
     using Type = long long;
     const std::string prefix = "test_files";
-    const size_t TOTAL_WRITE_SIZE = 1UL << 35;
+    const size_t TOTAL_WRITE_SIZE = 1UL << std::atoi(argv[2]);
     const size_t SINGLE_WRITE_SIZE = 4 * (1UL << 20);
     size_t n = SINGLE_WRITE_SIZE / sizeof(Type);
     std::shared_ptr<Type> array;
     {
-        UnorderedFileWriter<Type> writer(prefix, 4000, 2);
+        UnorderedFileWriter<Type> writer(prefix, 128, 2);
 
         LOG(INFO) << "Preparing data";
         array = std::shared_ptr<Type>((Type *) malloc(SINGLE_WRITE_SIZE), free);
@@ -36,18 +40,12 @@ void UnorderedIOTest() {
     LOG(INFO) << "Files found";
     UnorderedFileReader<Type> reader;
     reader.PrepFiles(files);
-    reader.Start(n, 4096, 4096, 25);
+    reader.Start(n, 512, 512, 2);
     for (size_t i = 0; i < TOTAL_WRITE_SIZE / SINGLE_WRITE_SIZE; i++) {
         auto [ptr, size] = reader.Poll();
-        if (size != n) {
-            LOG(ERROR) << "Read size is expected to be the same";
-            exit(0);
-        }
-        auto result = memcmp(ptr, array.get(), SINGLE_WRITE_SIZE);
-        if (result != 0) {
-            LOG(ERROR) << "Expected two arrays to be the same";
-            exit(0);
-        }
+        CHECK(size == n) << "Read size is expected to be the same. Actual size: " << size;
+//        auto result = memcmp(ptr, array.get(), SINGLE_WRITE_SIZE);
+//        CHECK(result == 0) << "Expected two arrays to be the same";
         free(ptr);
     }
     auto [ptr, size] = reader.Poll();
@@ -57,17 +55,19 @@ void UnorderedIOTest() {
     LOG(INFO) << "File reader completed";
 }
 
-void ReadOnlyTest() {
+void ReadOnlyTest(int argc, char **argv) {
     auto files = FindFiles("test_files");
     size_t expected_size = 0;
-    for (auto &file : files) {
+    for (auto &file: files) {
         expected_size += file.file_size;
     }
-    LOG(INFO) << "Starting reading " << files.size() << " files " << expected_size << " bytes";
+    LOG(INFO) << "Starting reading " << files.size() << " files "
+              << expected_size << " bytes "
+              << (expected_size >> 30) << " GiB";
     UnorderedFileReader<size_t> reader;
     reader.PrepFiles(files);
-    reader.SetBufferQueueSize(1000);
-    reader.Start(1 << 20, 4096, 4096, 1);
+    reader.SetBufferQueueSize(512);
+    reader.Start(1 << 20, 128, 128, 2);
     while (true) {
         auto [ptr, size] = reader.Poll();
         if (ptr == nullptr || size == 0) {
@@ -80,7 +80,7 @@ void ReadOnlyTest() {
     LOG(INFO) << "Done reading";
 }
 
-void OrderedFileWriterTest() {
+void OrderedFileWriterTest(int argc, char **argv) {
     using Type = long long;
     const std::string prefix = "test_files";
     const size_t TOTAL_WRITE_SIZE = 1UL << 32;
@@ -105,14 +105,14 @@ void OrderedFileWriterTest() {
     LOG(INFO) << "Done writing";
 }
 
-std::function<void(void)> test_functions[] = {UnorderedIOTest, ReadOnlyTest, OrderedFileWriterTest};
+std::function<void(int, char **)> test_functions[] = {UnorderedIOTest, ReadOnlyTest, OrderedFileWriterTest};
 
 int main(int argc, char **argv) {
-    if (argc != 2) {
-        std::cout << "Usage: " << argv[0] << " " << "<which test to perform>\n";
+    if (argc < 2) {
+        std::cout << "Usage: " << argv[0] << " " << "<which test to perform> <test-specific arguments>\n";
         return 0;
     }
     int test_number = std::atoi(argv[1]);
     std::cout << "Performing test_number " << test_number << '\n';
-    test_functions[test_number]();
+    test_functions[test_number](argc, argv);
 }

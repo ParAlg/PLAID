@@ -51,9 +51,9 @@ public:
         //   short term solution is to force multiples of 512 and throw an error otherwise;
         //   alternatively, use ftruncate to change the size of the file
         //   long term solution is to store the size of the last section in the end of the file (i.e. last 8 bytes)
-        CHECK(size * sizeof(T) % O_DIRECT_MULTIPLE != 0)
-                << "Size (in bytes) must be aligned to the size of a page in O_DIRECT mode. "
-                << "Actual size: " << size * sizeof(T);
+        CHECK(size * sizeof(T) % O_DIRECT_MULTIPLE == 0)
+                        << "Size (in bytes) must be aligned to the size of a page in O_DIRECT mode. "
+                        << "Actual size: " << size * sizeof(T);
         auto request = new WriteRequest(std::move(data), size);
         std::lock_guard<std::mutex> guard(wait_queue_lock);
         wait_queue.push_back(request);
@@ -64,7 +64,8 @@ public:
         std::unique_lock<std::mutex> lock(wait_queue_lock);
         while (wait_queue.empty()) {
             wait_queue_cond.wait_for(lock, std::chrono::microseconds(timeout_microseconds));
-            if (wait_queue.empty()) {
+            // TODO: how do different setups affect performance?
+            if (!is_open && wait_queue.empty()) {
                 return new WriteRequest();
             }
         }
@@ -175,6 +176,9 @@ private:
                 }
             }
             if (phase >= WAITING_FOR_COMPLETION) {
+                if (outstanding_request == 0) {
+                    phase = ALL_DONE;
+                }
                 continue;
             }
             bool submit_write = false;
@@ -189,8 +193,8 @@ private:
                 while (true) {
                     sqe = io_uring_get_sqe(&ring);
                     if (sqe == nullptr) {
-                        [[unlikely]]
-                                sqe_unavailable_count++;
+                        [[unlikely]];
+                        sqe_unavailable_count++;
                     } else {
                         break;
                     }
@@ -212,7 +216,7 @@ private:
             }
         }
         if (sqe_unavailable_count > 0) {
-            [[unlikely]]
+            [[unlikely]];
             LOG(WARNING) << "io_uring sqe entires were unavailable " << sqe_unavailable_count << " times. " <<
                          "Consider expanding the ring buffer.";
         }

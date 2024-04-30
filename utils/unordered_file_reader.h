@@ -32,7 +32,7 @@ public:
      * Creates the object. Note that you should call PrepFiles and Start to really begin the file reader.
      */
     explicit UnorderedFileReader() {
-        buffer_queue_size = 50;
+        buffer_queue_size = 512;
     }
 
     ~UnorderedFileReader() {
