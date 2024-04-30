@@ -14,7 +14,7 @@ void UnorderedIOTest(int argc, char **argv) {
     CHECK(argc > 2) << "Expected an argument on write size";
     using Type = long long;
     const std::string prefix = "test_files";
-    const size_t TOTAL_WRITE_SIZE = 1UL << std::atoi(argv[2]);
+    const size_t TOTAL_WRITE_SIZE = 1UL << std::strtol(argv[2], nullptr, 10);
     const size_t SINGLE_WRITE_SIZE = 4 * (1UL << 20);
     size_t n = SINGLE_WRITE_SIZE / sizeof(Type);
     std::shared_ptr<Type> array;
@@ -81,11 +81,12 @@ void ReadOnlyTest(int argc, char **argv) {
 }
 
 void OrderedFileWriterTest(int argc, char **argv) {
+    CHECK(argc > 2) << "Expected an argument on total write size and number of buckets";
     using Type = long long;
     const std::string prefix = "test_files";
-    const size_t TOTAL_WRITE_SIZE = 1UL << 32;
+    const size_t TOTAL_WRITE_SIZE = 1UL << std::strtol(argv[2], nullptr, 10);
     const size_t SINGLE_WRITE_SIZE = 4 * (1UL << 10);
-    const size_t NUM_BUCKETS = 1000;
+    const size_t NUM_BUCKETS = std::strtol(argv[3], nullptr, 10);
     OrderedFileWriter<Type> writer(prefix, NUM_BUCKETS, 4 * (1 << 20));
     const size_t n = SINGLE_WRITE_SIZE / sizeof(Type);
     LOG(INFO) << "Starting writer loop";
@@ -112,7 +113,7 @@ int main(int argc, char **argv) {
         std::cout << "Usage: " << argv[0] << " " << "<which test to perform> <test-specific arguments>\n";
         return 0;
     }
-    int test_number = std::atoi(argv[1]);
+    int test_number = (int)std::strtol(argv[1], nullptr, 10);
     std::cout << "Performing test_number " << test_number << '\n';
     test_functions[test_number](argc, argv);
 }

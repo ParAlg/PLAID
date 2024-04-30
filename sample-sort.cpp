@@ -148,7 +148,7 @@ int main(int argc, char **argv) {
         LOG(ERROR) << "Usage: " << argv[0] << " <data size> <true|false>";
         return 0;
     }
-    auto n = std::atol(argv[1]);
+    size_t n = 1UL << std::strtol(argv[1], nullptr, 10);
     bool regenerate;
     if (strcmp(argv[2], "true") == 0) {
         regenerate = true;

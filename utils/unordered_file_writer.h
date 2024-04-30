@@ -139,7 +139,7 @@ private:
                                     const std::vector<std::string> output_files,
                                     const size_t io_uring_size) {
         struct io_uring ring;
-        SYSCALL(io_uring_queue_init(io_uring_size, &ring, IORING_SETUP_SQPOLL));
+        SYSCALL(io_uring_queue_init(io_uring_size, &ring, IORING_SETUP_SINGLE_ISSUER));
 
         std::vector<OpenedFile *> files;
         size_t current_file = 0;
