@@ -21,6 +21,7 @@
 #include "config.h"
 #include "utils/file_info.h"
 #include "utils/file_utils.h"
+#include "utils/simple_queue.h"
 
 /**
  * Not really an ordered file writer. This class creates many buckets. Each bucket corresponds to a file.
@@ -48,6 +49,72 @@ public:
             buckets[i].~Bucket();
         }
         free(buckets);
+        free(requests);
+    }
+
+    static void RunIOThread(OrderedFileWriter<T, SAMPLE_SORT_BUCKET_SIZE> *writer) {
+        auto completions = &writer->free_requests;
+        auto pending_requests = &writer->pending_requests;
+        unsigned int requests_in_ring = 0;
+        struct io_uring ring;
+        const unsigned RING_DEPTH = 128;
+        io_uring_queue_init(RING_DEPTH, &ring, IORING_SETUP_SINGLE_ISSUER);
+        bool has_more_requests = true;
+        while (has_more_requests || requests_in_ring > 0) {
+            bool reap_required = completions->IsEmptyUnsafe() || requests_in_ring >= RING_DEPTH || !has_more_requests;
+            while (requests_in_ring > 0) {
+                io_uring_cqe *cqe;
+                if (reap_required) {
+                    SYSCALL(io_uring_wait_cqe(&ring, &cqe));
+                } else {
+                    int res = io_uring_peek_cqe(&ring, &cqe);
+                    if (res != 0) {
+                        break;
+                    }
+                }
+                io_uring_cqe_seen(&ring, cqe);
+                SYSCALL(cqe->res);
+                auto completed_request = (IOVectorRequest *) io_uring_cqe_get_data(cqe);
+                requests_in_ring--;
+                completions->Push(completed_request);
+                completed_request->Reset();
+                // at least one reap is done at this point; further reaps are optional
+                reap_required = false;
+            }
+            while(requests_in_ring < RING_DEPTH) {
+                IOVectorRequest *request = pending_requests->Poll();
+                if (request == nullptr) {
+                    has_more_requests = false;
+                    break;
+                }
+                io_uring_sqe *sqe = io_uring_get_sqe(&ring);
+                if (sqe == nullptr) {
+                    [[unlikely]]
+                    LOG(ERROR) << "io_uring does not have enough sqe";
+                    return;
+                }
+                io_uring_sqe_set_data(sqe, request);
+                io_uring_prep_writev(sqe,
+                                     request->fd,
+                                     &request->io_vectors[0],
+                                     request->iovec_count,
+                                     request->offset);
+                SYSCALL(io_uring_submit(&ring));
+                requests_in_ring++;
+            }
+        }
+        io_uring_queue_exit(&ring);
+    }
+
+    inline IOVectorRequest* NewRequest(int fd, size_t offset) {
+        auto *r = free_requests.Poll();
+        r->fd = fd;
+        r->offset = offset;
+        return r;
+    }
+
+    inline void SubmitRequest(IOVectorRequest* r) {
+        pending_requests.Push(r);
     }
 
     /**
@@ -57,17 +124,30 @@ public:
      * @param bucket_count Number of buckets to create (they're numbered starting from 0)
      * @param file_flush_threshold The threshold (in bytes) at which a chunk of data is sent to disk
      */
-    void Initialize(const std::string &prefix, size_t bucket_count, size_t file_flush_threshold) {
+    void Initialize(const std::string &prefix, size_t bucket_count,
+                    size_t file_flush_threshold, size_t request_pool_size = -1) {
         this->num_buckets = bucket_count;
+        this->io_threshold = file_flush_threshold;
+        // FIXME: adjust this
+        request_pool_size = bucket_count * 100;
+
+        requests = (IOVectorRequest*)malloc(request_pool_size * sizeof(IOVectorRequest));
+        for (size_t i = 0;i < request_pool_size; i++) {
+            free_requests.Push(requests + i);
+        }
+
         // allocate memory for all buckets
         buckets = (Bucket*)malloc(bucket_count * sizeof(Bucket));
         for (size_t i = 0; i < bucket_count; i++) {
             std::string f_name = GetFileName(prefix, i);
             // do a placement new since the std::mutex in a BucketData can't be copied or moved
-            new(&buckets[i]) Bucket(f_name, file_flush_threshold);
+            new(&buckets[i]) Bucket(f_name);
+            buckets[i].request = NewRequest(buckets[i].current_file, 0);
             // construct the result file; file sizes will be filled in later
             result_files.emplace_back(f_name, 0, 0);
         }
+
+        io_thread = std::make_unique<std::thread>(RunIOThread, this);
     }
 
     /**
@@ -80,10 +160,17 @@ public:
         }
         cleanup_started = true;
         parlay::parallel_for(0, num_buckets, [&](size_t i) {
-            buckets[i].CleanUp();
-            result_files[i].file_size = buckets[i].file_size;
-            result_files[i].true_size = buckets[i].true_file_size;
+            auto [buffer, buffer_size, true_size] = buckets[i].GatherMisalignedPointers();
+            Bucket *bucket = &buckets[i];
+            IOVectorRequest *request = bucket->request;
+            request->AddPointer((T*)buffer, buffer_size);
+            bucket->file_size += request->current_size;
+            SubmitRequest(request);
+            result_files[i].file_size = bucket->file_size;
+            result_files[i].true_size = bucket->file_size - buffer_size + true_size;
         }, 1);
+        pending_requests.Close();
+        io_thread->join();
     }
 
     /**
@@ -99,7 +186,22 @@ public:
             [[unlikely]]
             LOG(ERROR) << "Invalid bucket number";
         }
-        buckets[bucket_number].AddRequest(pointer, count);
+        Bucket *bucket = &buckets[bucket_number];
+        auto size = count * sizeof(T);
+        std::unique_lock<std::mutex> bucket_lock(bucket->lock);
+        // misaligned pointer need special treatment since they won't fit in a iovec
+        if (size % O_DIRECT_MULTIPLE != 0) {
+            bucket->misaligned_pointers.emplace_back(pointer, count);
+            return;
+        }
+        IOVectorRequest *request = bucket->request;
+        request->AddPointer(pointer, size);
+        if (request->current_size >= io_threshold || request->iovec_count >= IO_VECTOR_SIZE) {
+            bucket->file_size += request->current_size;
+            bucket->request = NewRequest(bucket->current_file, bucket->file_size);
+            bucket_lock.unlock();
+            SubmitRequest(request);
+        }
     }
 
     [[nodiscard]] std::vector<FileInfo> ReapResult() {
@@ -112,6 +214,14 @@ private:
     size_t num_buckets = 0;
     std::vector<FileInfo> result_files;
     Bucket *buckets;
+    IOVectorRequest *requests;
+
+    SimpleQueue<IOVectorRequest*> free_requests;
+    SimpleQueue<IOVectorRequest*> pending_requests;
+
+    std::unique_ptr<std::thread> io_thread;
+
+    size_t io_threshold = 4 << 20;
 
     struct BucketData {
         char data[BucketSize];
@@ -119,16 +229,22 @@ private:
     using BucketAllocator = parlay::type_allocator<BucketData>;
 
     struct IOVectorRequest {
+        int fd = -1;
+        size_t offset = -1;
         size_t current_size = 0;
         // FIXME: add doc on why using iovec
         iovec io_vectors[IO_VECTOR_SIZE];
         uint32_t iovec_count = 0;
 
+        void AddPointer(T* pointer, size_t size) {
+            io_vectors[iovec_count].iov_base = pointer;
+            io_vectors[iovec_count].iov_len = size;
+            iovec_count += 1;
+            current_size += size;
+        }
+
         void Reset() {
             for (size_t i = 0; i < iovec_count; i++) {
-                // FIXME: this assumes that the pointer is constructed with a malloc instead of
-                //   (1) a new T[]
-                //   (2) a new T
                 BucketAllocator::free((BucketData*)io_vectors[i].iov_base);
             }
             current_size = 0;
@@ -137,172 +253,22 @@ private:
     };
 
     struct Bucket {
-        // FIXME: should a bucket have its own ring or use a common ring?
-        //   should we allow requests to queue up?
-        //   do we use a single file for a bucket or multiple files?
-        size_t requests_in_ring = 0;
-        size_t requests_created = 0;
-        size_t max_requests;
-        std::mutex lock;
-        io_uring ring;
         IOVectorRequest *request;
         int current_file;
-        size_t file_size = 0;
-        size_t true_file_size = 0;
-        size_t io_threshold = 0;
-        std::vector<IOVectorRequest *> pending_requests;
-        std::vector<IOVectorRequest *> completed_requests;
+        size_t true_file_size, file_size = 0;
+        std::mutex lock;
         std::vector<std::pair<T *, size_t>> misaligned_pointers;
 
         Bucket() = delete;
 
         // FIXME: magic numbers here
-        explicit Bucket(std::string &file_name, size_t io_threshold, size_t max_requests = 10) : max_requests(max_requests), io_threshold(io_threshold) {
-            io_uring_queue_init(max_requests, &ring, 0);
-            request = new IOVectorRequest();
-            requests_created = 1;
+        explicit Bucket(std::string &file_name) {
             current_file = open(file_name.c_str(), O_WRONLY | O_DIRECT | O_CREAT, 0744);
             SYSCALL(current_file);
         }
 
         ~Bucket() {
-            io_uring_queue_exit(&ring);
-            for (auto r: completed_requests) {
-                delete r;
-            }
-            if (request != nullptr || !pending_requests.empty() || completed_requests.size() != requests_created) {
-                [[unlikely]]
-                LOG(ERROR) << "All requests in bucket should be completed by destruction.";
-            }
             SYSCALL(close(current_file));
-        }
-
-        /**
-         * Reap the completion queue of io_uring
-         * @param wait_second Number of seconds to wait
-         * @param wait_nanosecond Number of nanoseconds to wait
-         */
-        void ReapRing(bool reap_required) {
-            while (requests_in_ring > 0) {
-                io_uring_cqe *cqe;
-                if (reap_required) {
-                    SYSCALL(io_uring_wait_cqe(&ring, &cqe));
-                } else {
-                    int res = io_uring_peek_cqe(&ring, &cqe);
-                    if (res != 0) {
-                        break;
-                    }
-                }
-                io_uring_cqe_seen(&ring, cqe);
-                SYSCALL(cqe->res);
-                auto completed_request = (IOVectorRequest *) io_uring_cqe_get_data(cqe);
-                requests_in_ring--;
-                completed_requests.push_back(completed_request);
-                completed_request->Reset();
-                // at least one reap is done at this point; further reaps are optional
-                reap_required = false;
-            }
-        }
-
-        /**
-         * Wait until no requests are pending and no requests are being processed in the io_uring
-         */
-        void Wait() {
-            while (!pending_requests.empty() || requests_in_ring > 0) {
-                while (requests_in_ring > 0) {
-                    ReapRing(true);
-                }
-                if (!pending_requests.empty()) {
-                    SubmitToRing();
-                }
-            }
-        }
-
-        /**
-         * Try submit a pending request to the ring
-         */
-        void SubmitToRing() {
-            while (!pending_requests.empty()) {
-                IOVectorRequest *ready_request = pending_requests.back();
-                pending_requests.pop_back();
-                io_uring_sqe *sqe = io_uring_get_sqe(&ring);
-                if (sqe == nullptr) {
-                    [[unlikely]]
-                    LOG(ERROR) << "io_uring does not have enough sqe";
-                    return;
-                }
-                io_uring_sqe_set_data(sqe, ready_request);
-                io_uring_prep_writev(sqe, current_file, &ready_request->io_vectors[0], ready_request->iovec_count, file_size);
-                file_size += ready_request->current_size;
-                SYSCALL(io_uring_submit(&ring));
-                requests_in_ring++;
-            }
-        }
-
-        /**
-         * Create a new iovec request
-         * @return Pointer to the new request
-         */
-        IOVectorRequest *NewRequest() {
-            // can't create too many requests; otherwise may exceed memory limit
-            // TODO: maybe we can have some request pool shared across all buckets?
-            if (requests_created < max_requests) {
-                requests_created++;
-                return new IOVectorRequest();
-            }
-            // if we reached the limit, we can only reuse an old request
-            while (completed_requests.empty()) {
-                ReapRing(true);
-            }
-            auto result = completed_requests.back();
-            completed_requests.pop_back();
-            return result;
-        }
-
-        /**
-         * Signify that the current request is ready to be written to disk. The request will be sent to
-         * pending_requests and the value will be set to nullptr.
-         * @param is_last_request True if this is the last request to be submitted.
-         */
-        void RequestReady(bool is_last_request = false) {
-            if (request->current_size > 0) {
-                [[likely]]
-                pending_requests.push_back(request);
-                SubmitToRing();
-            }
-            if (is_last_request) {
-                [[unlikely]]
-                if (request->current_size == 0) {
-                    completed_requests.push_back(request);
-                }
-                request = nullptr;
-            } else {
-                request = NewRequest();
-            }
-        }
-
-        /**
-         * Add a new write request in this bucket. This function is thread-safe.
-         *
-         * Do not submit arrays whose size is not a multiple of O_DIRECT_MULTIPLE unless necessary
-         * @param pointer
-         * @param count Number of elements in pointer
-         */
-        inline void AddRequest(T *pointer, size_t count) {
-            std::lock_guard<std::mutex> bucket_lock(lock);
-            auto size = count * sizeof(T);
-            // misaligned pointer need special treatment since they won't fit in a iovec
-            if (size % O_DIRECT_MULTIPLE != 0) {
-                misaligned_pointers.emplace_back(pointer, count);
-                return;
-            }
-            request->io_vectors[request->iovec_count].iov_base = pointer;
-            request->io_vectors[request->iovec_count].iov_len = size;
-            request->iovec_count += 1;
-            request->current_size += size;
-            if (request->current_size >= io_threshold || request->iovec_count >= IO_VECTOR_SIZE) {
-                RequestReady();
-            }
         }
 
         /**
@@ -311,13 +277,14 @@ private:
          * Copies the content in each pointer into a buffer and then writes the buffer to disk using
          * synchronous IO.
          */
-        void FlushMisalignedPointers() {
+        std::tuple<unsigned char*, size_t, size_t> GatherMisalignedPointers() {
             size_t write_size = 0;
             for (size_t i = 0; i < misaligned_pointers.size(); i++) {
                 auto [pointer, count] = misaligned_pointers[i];
                 size_t pointer_size = count * sizeof(T);
                 write_size += pointer_size;
             }
+            // Divide and always round up because we need 2 more bytes than write_size
             size_t target_write_size = (write_size / O_DIRECT_MULTIPLE + 1) * O_DIRECT_MULTIPLE;
             if (target_write_size - write_size < METADATA_SIZE) {
                 target_write_size += O_DIRECT_MULTIPLE;
@@ -330,28 +297,12 @@ private:
                 auto [pointer, count] = misaligned_pointers[i];
                 size_t pointer_size = count * sizeof(T);
                 memcpy(write_buffer + buffer_position, pointer, pointer_size);
+                BucketAllocator::free((BucketData*)pointer);
                 buffer_position += pointer_size;
             }
             *(uint16_t*)(&write_buffer[target_write_size - METADATA_SIZE]) = (uint16_t)byte_diff;
-            // FIXME: performance bottleneck here? parlay does not know to let a thread yield when it's doing
-            //   synchronous IO
-            lseek64(current_file, file_size, SEEK_SET);
-            SYSCALL(write(current_file, write_buffer, target_write_size));
-            free(write_buffer);
-            for (size_t i = 0 ; i < misaligned_pointers.size(); i++) {
-                BucketAllocator::free((BucketData*)misaligned_pointers[i].first);
-            }
             // compute true file size (excluding garbage bytes and marker at the end) and file size on disk
-            true_file_size = file_size + write_size;
-            file_size += target_write_size;
-        }
-
-        void CleanUp() {
-            // flush the last request and wait for it to complete
-            RequestReady(true);
-            // flush misaligned pointers
-            FlushMisalignedPointers();
-            Wait();
+            return {write_buffer, target_write_size, write_size};
         }
     };
 };

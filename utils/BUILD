@@ -73,6 +73,7 @@ cc_library(
     deps = [
         ":file_info",
         ":logger",
+        ":simple_queue",
         "//:config",
         "@parlaylib//parlay:primitives",
     ],
@@ -83,4 +84,11 @@ cc_library(
     srcs = ["timer.h"],
     visibility = ["//visibility:public"],
     deps = ["@parlaylib//parlay/internal:get_time"],
+)
+
+cc_library(
+    name = "simple_queue",
+    srcs = ["simple_queue.h"],
+    visibility = ["//visibility:public"],
+    deps = [],
 )

@@ -144,7 +144,7 @@ private:
     std::vector<FileInfo> available_files;
     // a single worker thread for managing file reading
     std::vector<std::unique_ptr<std::thread>> worker_threads;
-    // TODO: if this ever becomes the bottleneck, we can use a lock-free queue instead
+    // TODO: if this ever becomes the bottleneck, we can use a mutex-free queue instead
     // a buffer queue containing data read from disk
     std::deque<std::pair<T*, size_t>> buffer_queue;
     std::mutex buffer_lock;

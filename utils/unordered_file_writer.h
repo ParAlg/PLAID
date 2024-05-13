@@ -99,7 +99,7 @@ private:
     bool is_open = true;
     size_t num_files = 0;
     std::vector<std::unique_ptr<std::thread>> worker_threads;
-    // TODO: if this ever becomes the bottleneck, we can use a lock-free queue instead
+    // TODO: if this ever becomes the bottleneck, we can use a mutex-free queue instead
     std::deque<WriteRequest *> wait_queue;
     std::mutex wait_queue_lock;
     std::condition_variable wait_queue_cond;
@@ -150,7 +150,7 @@ private:
         size_t outstanding_request = 0;
         size_t sqe_unavailable_count = 0;
 
-        // FIXME: do we need to acquire a lock for the second check?
+        // FIXME: do we need to acquire a mutex for the second check?
         Phase phase = NORMAL;
         while (phase != ALL_DONE) {
             // reap io_uring result
