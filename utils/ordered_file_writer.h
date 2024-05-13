@@ -315,7 +315,7 @@ private:
             }
             size_t byte_diff = target_write_size - write_size;
 
-            uint8_t *write_buffer = (uint8_t *)malloc(target_write_size);
+            auto *write_buffer = (unsigned char *)malloc(target_write_size);
             size_t buffer_position = 0;
             for (size_t i = 0; i < misaligned_pointers.size(); i++) {
                 auto [pointer, count] = misaligned_pointers[i];

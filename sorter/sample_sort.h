@@ -41,7 +41,7 @@ private:
         for (size_t i = 0; i < file_list.size(); i++) {
             auto prev = i == 0 ? 0 : size_prefix_sum[i-1];
             size_prefix_sum[i] = file_list[i].true_size + prev;
-            if (file_list[i].true_size == 0) {
+            if (file_list[i].true_size == 0 && file_list[i].file_size > 0) {
                 [[unlikely]]
                 LOG(ERROR) << "File's true size should already be determined";
             }
@@ -80,7 +80,7 @@ private:
             auto file_num = std::upper_bound(size_prefix_sum, size_prefix_sum + file_list.size(), target_byte) - size_prefix_sum;
             auto file_offset = target_byte - (file_num == 0 ? 0 : size_prefix_sum[file_num - 1]);
             // a buffer for file IO
-            uint8_t buffer[sizeof(T)];
+            unsigned char buffer[sizeof(T)];
             ReadFileOnce(file_list[file_num].file_name, buffer, file_offset, sizeof(T));
             // avoid concurrent access to list of samples
             std::lock_guard<std::mutex> lock(result_lock);
@@ -196,8 +196,8 @@ private:
         size_t min_sample_size = std::max(1UL, 3 * file_size / MAIN_MEMORY_SIZE);
         // max sample size cannot exceed the number of elements; it should also not result in very tiny files
         size_t max_sample_size = std::max(1UL, std::min(file_size / sizeof(T), file_size / O_DIRECT_MULTIPLE));
-        // FIXME: need more stuff here; 1024 is a temporary value
-        return std::max(std::min(1024UL, max_sample_size), min_sample_size);
+        // FIXME: need more stuff here; ~128MB per bucket is temporary
+        return std::max(std::min(file_size / (1UL << 27), max_sample_size), min_sample_size);
     }
 
     // reader for the input files
@@ -220,7 +220,7 @@ public:
         size_t flush_threshold = 4 << 20;
         // FIXME: change this file name to a different one (possibly randomized?)
         intermediate_writer.Initialize("spfx_", num_samples + 1, 1 << 20);
-        timer.next("Before sampling");
+        timer.next("Before sampling " + std::to_string(num_samples) + " samples with bucket size ");
         auto samples = GetSamples(input_files, num_samples);
         const auto sorted_pivots = parlay::sort(samples, comp);
         timer.next("After sampling and before assign to bucket");

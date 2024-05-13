@@ -9,7 +9,7 @@
 #include "parlay/parallel.h"
 
 #include "file_utils.h"
-#include "config.h"
+#include "./config.h"
 #include "utils/logger.h"
 
 using std::filesystem::directory_iterator;
@@ -57,11 +57,11 @@ void GetFileInfo(std::vector<FileInfo> &info) {
         }
         // FIXME: all files should have end-of-file marker?
         info[i].true_size = info[i].file_size;
-        if (info[i].true_size == 0) {
-            uint8_t buffer[O_DIRECT_MULTIPLE];
-            ReadFileOnce(info[i].file_name, buffer, info[i].file_size - O_DIRECT_MULTIPLE);
-            info[i].true_size = info[i].file_size - *(uint16_t *) (buffer + O_DIRECT_MULTIPLE - METADATA_SIZE);
-        }
+//        if (info[i].true_size == 0 && info[i].file_size > 0) {
+//            unsigned char buffer[O_DIRECT_MULTIPLE];
+//            ReadFileOnce(info[i].file_name, buffer, info[i].file_size - O_DIRECT_MULTIPLE);
+//            info[i].true_size = info[i].file_size - *(uint16_t *) (buffer + O_DIRECT_MULTIPLE - METADATA_SIZE);
+//        }
     }, 1);
 }
 
@@ -87,12 +87,10 @@ std::string GetFileName(const std::string &prefix, size_t file_number) {
 void ReadFileOnce(const std::string &file_name, void *buffer, size_t offset) {
     int fd = open(file_name.c_str(), O_RDONLY | O_DIRECT);
     SYSCALL(fd);
-    if (offset % O_DIRECT_MULTIPLE != 0) {
-        [[unlikely]]
-        LOG(ERROR) << "File read offset is " << offset << ", which is not a multiple of " << O_DIRECT_MULTIPLE;
-    }
+    CHECK(offset % O_DIRECT_MULTIPLE == 0)
+                << "File read offset is " << offset << ", which is not a multiple of " << O_DIRECT_MULTIPLE;
     auto res = lseek64(fd, (long) offset, SEEK_SET);
-    SYSCALL(res);
+    CHECK(res != off64_t(-1)) << std::strerror(errno) << " " << file_name << " at offset " << offset;
     SYSCALL(read(fd, buffer, O_DIRECT_MULTIPLE));
     SYSCALL(close(fd));
 }
@@ -119,7 +117,7 @@ void ReadFileOnce(const std::string &file_name, void *buffer, size_t start, size
     auto res = lseek64(fd, (long) start_aligned, SEEK_SET);
     SYSCALL(res);
     // read everything into a temporary buffer and then copy the data to the original buffer
-    uint8_t temp_buffer[aligned_read_size];
+    unsigned char temp_buffer[aligned_read_size];
     SYSCALL(read(fd, temp_buffer, O_DIRECT_MULTIPLE));
     memcpy(buffer, temp_buffer + (start - start_aligned), read_size);
     SYSCALL(close(fd));
@@ -142,6 +140,7 @@ void *ReadEntireFile(const std::string &file_name, size_t read_size) {
     SYSCALL(fd);
     auto result_size = read(fd, buffer, read_size);
     SYSCALL(result_size);
-    ASSERT((size_t)result_size == read_size, "Size mismatch for " << file_name << ": " << read_size << " attempted, got " << result_size);
+    ASSERT((size_t) result_size == read_size,
+           "Size mismatch for " << file_name << ": " << read_size << " attempted, got " << result_size);
     return buffer;
 }

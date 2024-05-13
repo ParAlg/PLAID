@@ -94,7 +94,7 @@ void nop(void* ptr) {}
 std::shared_ptr<size_t> GenerateSmallSample(const std::string &prefix, size_t n) {
     auto nums = (size_t *) malloc(n * sizeof(size_t));
     {
-        auto perm = parlay::random_permutation(n);
+        auto perm = parlay::random_permutation(n, parlay::random(std::random_device()()));
         parlay::parallel_for(0, n, [&](size_t i) {
             nums[i] = perm[i];
         });
@@ -112,10 +112,10 @@ std::shared_ptr<size_t> GenerateSmallSample(const std::string &prefix, size_t n)
     return {nums, free};
 }
 
-std::shared_ptr<size_t> GetDummyArray(size_t n = 4096) {
+std::shared_ptr<size_t> GetDummyArray(size_t n) {
     std::shared_ptr<size_t> result((size_t *) malloc(n * sizeof(size_t)), free);
     for (size_t i = 0; i < n; i++) {
-        result.get()[i] = i + 1;
+        result.get()[i] = i;
     }
     return result;
 }

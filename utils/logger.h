@@ -15,7 +15,7 @@
  * number and print errno.
  */
 #define SYSCALL(expr) do { \
-    int result = (expr);   \
+    long long result = (expr);   \
     if (__builtin_expect(result < 0, 0)) LOG(ERROR) << "System call returned " << result << ": " \
     << std::strerror(errno) << " or " << std::strerror(-result);                                 \
 } while(0)
