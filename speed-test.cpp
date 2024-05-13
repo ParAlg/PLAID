@@ -90,7 +90,7 @@ void OrderedFileWriterTest(int argc, char **argv) {
     const size_t TOTAL_WRITE_SIZE = 1UL << std::strtol(argv[2], nullptr, 10);
     const size_t SINGLE_WRITE_SIZE = 4 * (1UL << 10);
     const size_t NUM_BUCKETS = std::strtol(argv[3], nullptr, 10);
-    OrderedFileWriter<Type> writer(prefix, NUM_BUCKETS, 4 * (1 << 20));
+    OrderedFileWriter<Type, SAMPLE_SORT_BUCKET_SIZE> writer(prefix, NUM_BUCKETS, 4 * (1 << 20));
     const size_t n = SINGLE_WRITE_SIZE / sizeof(Type);
     LOG(INFO) << "Starting writer loop";
     parlay::random_generator gen;
@@ -109,10 +109,21 @@ void OrderedFileWriterTest(int argc, char **argv) {
     LOG(INFO) << "Done writing";
 }
 
+void InMemorySortingTest(int argc, char **argv) {
+    CHECK(argc > 2) << "Expected number of elements to sort";
+    const size_t n = 1UL << std::strtol(argv[2], nullptr, 10);
+    parlay::internal::timer timer("sort");
+    auto array = parlay::random_permutation(n);
+    timer.next("Permutation done");
+    auto res = parlay::sort(array);
+    timer.next("Sorting done");
+}
+
 std::function<void(int, char **)> test_functions[] = {
     UnorderedIOTest,
     ReadOnlyTest,
-    OrderedFileWriterTest};
+    OrderedFileWriterTest,
+    InMemorySortingTest};
 
 int main(int argc, char **argv) {
     if (argc < 2) {
