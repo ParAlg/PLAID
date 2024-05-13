@@ -15,8 +15,8 @@ constexpr size_t THREAD_COUNT = 128;
 constexpr size_t SSD_COUNT= 30;
 // number of SSDs that can be utilized in parallel; this is different from SSD_COUNT if RAID is used
 constexpr size_t SSD_PARALLELISM = SSD_COUNT;
-// (advisory) size of a single file, may go a little higher in practice
-constexpr size_t FILE_SIZE = 1 << 30;
+
+constexpr size_t SAMPLE_SORT_BUCKET_SIZE = 4 << 20;
 
 constexpr size_t IO_VECTOR_SIZE = 1024;
 

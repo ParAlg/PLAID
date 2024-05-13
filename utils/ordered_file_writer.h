@@ -15,6 +15,7 @@
 
 #include "absl/log/log.h"
 #include "parlay/parallel.h"
+#include "parlay/alloc.h"
 
 #include "utils/logger.h"
 #include "config.h"
@@ -27,7 +28,7 @@
  *
  * @tparam T
  */
-template<typename T>
+template<typename T, size_t BucketSize>
 class OrderedFileWriter {
     struct Bucket;
     struct IOVectorRequest;
@@ -62,7 +63,7 @@ public:
         buckets = (Bucket*)malloc(bucket_count * sizeof(Bucket));
         for (size_t i = 0; i < bucket_count; i++) {
             std::string f_name = GetFileName(prefix, i);
-            // do a placement new since the std::mutex in a Bucket can't be copied or moved
+            // do a placement new since the std::mutex in a BucketData can't be copied or moved
             new(&buckets[i]) Bucket(f_name, file_flush_threshold);
             // construct the result file; file sizes will be filled in later
             result_files.emplace_back(f_name, 0, 0);
@@ -112,6 +113,11 @@ private:
     std::vector<FileInfo> result_files;
     Bucket *buckets;
 
+    struct BucketData {
+        char data[BucketSize];
+    };
+    using BucketAllocator = parlay::type_allocator<BucketData>;
+
     struct IOVectorRequest {
         size_t current_size = 0;
         // FIXME: add doc on why using iovec
@@ -123,7 +129,7 @@ private:
                 // FIXME: this assumes that the pointer is constructed with a malloc instead of
                 //   (1) a new T[]
                 //   (2) a new T
-                free(io_vectors[i].iov_base);
+                BucketAllocator::free((BucketData*)io_vectors[i].iov_base);
             }
             current_size = 0;
             iovec_count = 0;
@@ -333,7 +339,7 @@ private:
             SYSCALL(write(current_file, write_buffer, target_write_size));
             free(write_buffer);
             for (size_t i = 0 ; i < misaligned_pointers.size(); i++) {
-                free(misaligned_pointers[i].first);
+                BucketAllocator::free((BucketData*)misaligned_pointers[i].first);
             }
             // compute true file size (excluding garbage bytes and marker at the end) and file size on disk
             true_file_size = file_size + write_size;

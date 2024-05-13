@@ -8,6 +8,7 @@
 #include "absl/log/log.h"
 #include "utils/ordered_file_writer.h"
 #include "parlay/random.h"
+#include "parlay/primitives.h"
 #include "utils/unordered_file_reader.h"
 
 void UnorderedIOTest(int argc, char **argv) {
@@ -83,7 +84,7 @@ void ReadOnlyTest(int argc, char **argv) {
 }
 
 void OrderedFileWriterTest(int argc, char **argv) {
-    CHECK(argc > 2) << "Expected an argument on total write size and number of buckets";
+    CHECK(argc > 3) << "Expected an argument on total write size and number of buckets";
     using Type = long long;
     const std::string prefix = "test_files";
     const size_t TOTAL_WRITE_SIZE = 1UL << std::strtol(argv[2], nullptr, 10);
@@ -108,7 +109,10 @@ void OrderedFileWriterTest(int argc, char **argv) {
     LOG(INFO) << "Done writing";
 }
 
-std::function<void(int, char **)> test_functions[] = {UnorderedIOTest, ReadOnlyTest, OrderedFileWriterTest};
+std::function<void(int, char **)> test_functions[] = {
+    UnorderedIOTest,
+    ReadOnlyTest,
+    OrderedFileWriterTest};
 
 int main(int argc, char **argv) {
     if (argc < 2) {
@@ -116,6 +120,6 @@ int main(int argc, char **argv) {
         return 0;
     }
     int test_number = (int)std::strtol(argv[1], nullptr, 10);
-    std::cout << "Performing test_number " << test_number << '\n';
+    std::cout << "Performing test_number " << test_number << "\n";
     test_functions[test_number](argc, argv);
 }

@@ -7,6 +7,28 @@
 #include "sorter/sample_sort.h"
 #include "utils/random_number_generator.h"
 
+template<typename T, typename Iterator>
+parlay::sequence<std::tuple<size_t, T>> CompareSortingResultFile(Iterator start, size_t start_index, const FileInfo &f) {
+    start += start_index;
+    auto current_file = (T *) ReadEntireFile(f.file_name, f.true_size);
+    size_t n = f.true_size / sizeof(T);
+    parlay::sequence<std::tuple<size_t, T>> mismatch_indices;
+    for (size_t i = 0; i < n; i++) {
+        auto expected = *start;
+        auto actual = current_file[i];
+        if (expected != actual) {
+            mismatch_indices.push_back({start_index, actual});
+            if (mismatch_indices.size() > 10) {
+                return mismatch_indices;
+            }
+        }
+        start++;
+        start_index++;
+    }
+    free(current_file);
+    return mismatch_indices;
+}
+
 /**
  * Compare the result of an in-memory sorting algorithm to an external memory sorting algorithm.
  *
@@ -18,43 +40,30 @@
  */
 template<typename T, typename Iterator>
 void CompareSortingResult(Iterator start, Iterator end, const std::vector<FileInfo> &file_list) {
-    auto cur = start;
-    size_t cur_index = 0;
-    size_t mismatch_count = 0;
     // read each file and then compare the content of the file to the result of the in-memory sorting algorithm
-    for (const auto &f: file_list) {
-        auto current_file = (T *) ReadEntireFile(f.file_name, f.true_size);
-        size_t n = f.true_size / sizeof(T);
-        for (size_t i = 0; i < n; i++) {
-            if (cur == end) {
-                LOG(ERROR) << "Iterator for in-memory result has unexpectedly ended at index " << cur_index;
-                goto too_many_errors;
-            }
-            auto expected = *cur;
-            auto actual = current_file[i];
-            if (expected != actual) {
-                LOG(ERROR) << "Mismatch at index " << cur_index << ". Expected " << expected << ". Got " << actual;
-                mismatch_count++;
-                if (mismatch_count >= 20) {
-                    goto too_many_errors;
-                }
-            }
-            cur++;
-            cur_index++;
-        }
-        free(current_file);
+    size_t total_size = std::distance(start, end);
+    size_t n_files = file_list.size();
+    size_t prefix_sum[n_files + 1];
+    prefix_sum[0] = 0;
+    for (size_t i = 1; i < n_files; i++) {
+        prefix_sum[i] = prefix_sum[i - 1] + file_list[i - 1].true_size / sizeof(T);
     }
-    if (cur != end) {
-        LOG(ERROR) << "Expecting more numbers from files but got none.";
+    size_t file_size = prefix_sum[n_files - 1] + file_list[n_files - 1].true_size / sizeof(T);
+    if (file_size != total_size) {
+        LOG(ERROR) << "Expected " << total_size << " numbers, got " << file_size;
         return;
     }
-    if (mismatch_count == 0) {
-        LOG(INFO) << "No mismatch found after comparing " << cur_index << " elements.";
+    auto mismatches = parlay::flatten(parlay::map(parlay::iota(n_files), [&](size_t i){
+        return CompareSortingResultFile<T>(start, prefix_sum[i], file_list[i]);
+    }, 1));
+    if (mismatches.empty()) {
+        LOG(INFO) << "No mismatch found after comparing " << total_size << " elements.";
+        return;
     }
-    return;
-    too_many_errors:
-    LOG(ERROR) << "Too many errors. Exiting...";
-    exit(0);
+    for (size_t i = 0; i < std::min(10UL, mismatches.size()); i++) {
+        auto [index, value] = mismatches[i];
+        LOG(ERROR) << "Mismatch at index " << i << ": expected " << start[index] << ", got " << value << " instead.";
+    }
 }
 
 /**
@@ -114,9 +123,10 @@ std::shared_ptr<size_t> GenerateSmallSample(const std::string &prefix, size_t n)
 
 std::shared_ptr<size_t> GetDummyArray(size_t n) {
     std::shared_ptr<size_t> result((size_t *) malloc(n * sizeof(size_t)), free);
-    for (size_t i = 0; i < n; i++) {
-        result.get()[i] = i;
-    }
+    auto *arr = result.get();
+    parlay::parallel_for(0, n, [&](size_t i) {
+        arr[i] = i;
+    });
     return result;
 }
 

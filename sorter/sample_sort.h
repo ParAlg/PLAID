@@ -14,6 +14,7 @@
 #include "absl/container/btree_map.h"
 #include "parlay/primitives.h"
 #include "parlay/internal/get_time.h"
+#include "parlay/alloc.h"
 
 #include "config.h"
 #include "utils/file_utils.h"
@@ -39,7 +40,7 @@ private:
         // num_samples is assumed to be < 10000, so parallelism shouldn't be necessary
         size_t size_prefix_sum[file_list.size()];
         for (size_t i = 0; i < file_list.size(); i++) {
-            auto prev = i == 0 ? 0 : size_prefix_sum[i-1];
+            auto prev = i == 0 ? 0 : size_prefix_sum[i - 1];
             size_prefix_sum[i] = file_list[i].true_size + prev;
             if (file_list[i].true_size == 0 && file_list[i].file_size > 0) {
                 [[unlikely]]
@@ -77,25 +78,31 @@ private:
         parlay::parallel_for(0, num_samples, [&](size_t i) {
             auto target_byte = sample_indices_list[i] * sizeof(T);
             // use binary search to find which file contains the target byte
-            auto file_num = std::upper_bound(size_prefix_sum, size_prefix_sum + file_list.size(), target_byte) - size_prefix_sum;
+            auto file_num =
+                std::upper_bound(size_prefix_sum, size_prefix_sum + file_list.size(), target_byte) - size_prefix_sum;
             auto file_offset = target_byte - (file_num == 0 ? 0 : size_prefix_sum[file_num - 1]);
             // a buffer for file IO
             unsigned char buffer[sizeof(T)];
             ReadFileOnce(file_list[file_num].file_name, buffer, file_offset, sizeof(T));
             // avoid concurrent access to list of samples
             std::lock_guard<std::mutex> lock(result_lock);
-            result.push_back(*(T*)(buffer));
+            result.push_back(*(T *) (buffer));
         }, 1);
         return result;
     }
 
-    void VerifyBucket(size_t start, size_t end, T* ptr, size_t size) {
+    void VerifyBucket(size_t start, size_t end, T *ptr, size_t size) {
         for (size_t i = 0; i < size; i++) {
             if (ptr[i] < start || ptr[i] > end) {
                 LOG(ERROR) << ptr[i] << " is not within range from " << start << " to " << end;
             }
         }
     }
+
+    struct BucketData {
+        char data[SAMPLE_SORT_BUCKET_SIZE];
+    };
+    using bucket_allocator = parlay::type_allocator<BucketData>;
 
     /**
      * Keep polling from the reader for data and then assign items into buckets according to how they compare
@@ -109,18 +116,18 @@ private:
      * to the writer. It may or may not be written to disk at the writer's discretion.
      * @param comp
      */
-    template <typename Comparator>
-    void AssignToBucket(const parlay::sequence<T> &samples, size_t flush_threshold, Comparator comp) {
+    template<typename Comparator>
+    void AssignToBucket(const parlay::sequence<T> &samples, Comparator comp) {
         // reads from the reader and put result into a thread-local buffer; send to intermediate_writer when buffer is full
         size_t num_buckets = samples.size() + 1;
-        size_t buffer_size = flush_threshold / sizeof(T);
+        size_t buffer_size = SAMPLE_SORT_BUCKET_SIZE / sizeof(T);
         // each bucket stores a pointer to an array, which will hold temporary values in that bucket
-        T* buckets[num_buckets];
+        T *buckets[num_buckets];
         unsigned int buffer_index[num_buckets];
         for (size_t i = 0; i < num_buckets; i++) {
 //            // may need posix_memalign since writev under O_DIRECT expects pointers to be aligned as well
 //            posix_memalign((void**)&buckets[i], O_DIRECT_MULTIPLE, buffer_size * sizeof(T));
-            buckets[i] = (T*) malloc(buffer_size * sizeof(T));
+            buckets[i] = (T*)bucket_allocator::alloc();
             buffer_index[i] = 0;
         }
         while (true) {
@@ -139,7 +146,7 @@ private:
                 if (buffer_index[bucket_index] == buffer_size) {
                     buffer_index[bucket_index] = 0;
                     intermediate_writer.Write(bucket_index, buckets[bucket_index], buffer_size);
-                    buckets[bucket_index] = (T*)malloc(buffer_size * sizeof(T));
+                    buckets[bucket_index] = (T *) malloc(buffer_size * sizeof(T));
                 }
             }
             free(data);
@@ -148,7 +155,7 @@ private:
         for (size_t i = 0; i < num_buckets; i++) {
             // if bucket is empty, free and do nothing else; otherwise send to writer
             if (buffer_index[i] == 0) {
-                free(buckets[i]);
+                bucket_allocator::free((BucketData*)buckets[i]);
             } else {
                 intermediate_writer.Write(i, buckets[i], buffer_index[i]);
             }
@@ -163,10 +170,10 @@ private:
      * @param comparator
      * @return Information of the resulting file
      */
-    template <typename Comparator>
-    FileInfo SortBucket(const FileInfo& file_info, std::string target_file, Comparator comparator) {
+    template<typename Comparator>
+    FileInfo SortBucket(const FileInfo &file_info, std::string target_file, Comparator comparator) {
         // use parlay's sorting utility to sort this bucket
-        T *buffer = (T*)ReadEntireFile(file_info.file_name, file_info.file_size);
+        T *buffer = (T *) ReadEntireFile(file_info.file_name, file_info.file_size);
         size_t n = file_info.true_size / sizeof(T);
         auto seq = parlay::make_slice(buffer, buffer + n);
         parlay::sort_inplace(seq, comparator);
@@ -189,7 +196,7 @@ private:
         //   (2) each bucket should be small enough to fit in main memory; ideally they should be small each that we
         //       can process buckets concurrently to overlap IO and computation
         size_t file_size = 0;
-        for (const auto &f : input_files) {
+        for (const auto &f: input_files) {
             file_size += f.true_size;
         }
         // FIXME: assuming no bucket is skewed to the point where it is 3 times the average size
@@ -203,13 +210,13 @@ private:
     // reader for the input files
     UnorderedFileReader<T> reader;
     // writer to handle all the buckets created in phase 1 of sample sort
-    OrderedFileWriter<T> intermediate_writer;
+    OrderedFileWriter<T, SAMPLE_SORT_BUCKET_SIZE> intermediate_writer;
 
 public:
 
-    template <typename Comparator>
+    template<typename Comparator>
     std::vector<FileInfo> Sort(std::vector<FileInfo> &input_files,
-                               const std::string& result_prefix,
+                               const std::string &result_prefix,
                                Comparator comp) {
         DLOG(INFO) << "Performing sample sort with " << input_files.size() << " files";
         parlay::internal::timer timer("Sample sort", true);
@@ -217,7 +224,6 @@ public:
         reader.PrepFiles(input_files);
         reader.Start();
         size_t num_samples = GetSampleSize(input_files);
-        size_t flush_threshold = 4 << 20;
         // FIXME: change this file name to a different one (possibly randomized?)
         intermediate_writer.Initialize("spfx_", num_samples + 1, 1 << 20);
         timer.next("Before sampling " + std::to_string(num_samples) + " samples with bucket size ");
@@ -225,7 +231,7 @@ public:
         const auto sorted_pivots = parlay::sort(samples, comp);
         timer.next("After sampling and before assign to bucket");
         parlay::parallel_for(0, THREAD_COUNT, [&](int i) {
-            AssignToBucket(sorted_pivots, flush_threshold, comp);
+            AssignToBucket(sorted_pivots, comp);
         }, 1);
         // retrieve buckets from intermediate_writer
         auto bucket_list = intermediate_writer.ReapResult();
