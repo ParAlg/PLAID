@@ -151,8 +151,8 @@ private:
         Bucket() = delete;
 
         // FIXME: magic numbers here
-        explicit Bucket(std::string &file_name, size_t io_threshold) : max_requests(3), io_threshold(io_threshold) {
-            io_uring_queue_init(3, &ring, 0);
+        explicit Bucket(std::string &file_name, size_t io_threshold, size_t max_requests = 10) : max_requests(max_requests), io_threshold(io_threshold) {
+            io_uring_queue_init(max_requests, &ring, 0);
             request = new IOVectorRequest();
             requests_created = 1;
             current_file = open(file_name.c_str(), O_WRONLY | O_DIRECT | O_CREAT, 0744);
@@ -176,14 +176,16 @@ private:
          * @param wait_second Number of seconds to wait
          * @param wait_nanosecond Number of nanoseconds to wait
          */
-        void ReapRing(long long wait_second = 0, long long wait_nanosecond = 0) {
-            while (true) {
+        void ReapRing(bool reap_required) {
+            while (requests_in_ring > 0) {
                 io_uring_cqe *cqe;
-                struct __kernel_timespec wait_time{wait_second, wait_nanosecond};
-                int res = io_uring_wait_cqe_timeout(&ring, &cqe, &wait_time);
-                if (res != 0) {
-                    // no more cqe entries to reap
-                    break;
+                if (reap_required) {
+                    SYSCALL(io_uring_wait_cqe(&ring, &cqe));
+                } else {
+                    int res = io_uring_peek_cqe(&ring, &cqe);
+                    if (res != 0) {
+                        break;
+                    }
                 }
                 io_uring_cqe_seen(&ring, cqe);
                 SYSCALL(cqe->res);
@@ -191,6 +193,8 @@ private:
                 requests_in_ring--;
                 completed_requests.push_back(completed_request);
                 completed_request->Reset();
+                // at least one reap is done at this point; further reaps are optional
+                reap_required = false;
             }
         }
 
@@ -200,7 +204,7 @@ private:
         void Wait() {
             while (!pending_requests.empty() || requests_in_ring > 0) {
                 while (requests_in_ring > 0) {
-                    ReapRing(1);
+                    ReapRing(true);
                 }
                 if (!pending_requests.empty()) {
                     SubmitToRing();
@@ -212,7 +216,7 @@ private:
          * Try submit a pending request to the ring
          */
         void SubmitToRing() {
-            while (!pending_requests.empty() && requests_in_ring < 1) {
+            while (!pending_requests.empty()) {
                 IOVectorRequest *ready_request = pending_requests.back();
                 pending_requests.pop_back();
                 io_uring_sqe *sqe = io_uring_get_sqe(&ring);
@@ -242,7 +246,7 @@ private:
             }
             // if we reached the limit, we can only reuse an old request
             while (completed_requests.empty()) {
-                ReapRing(0, 1000);
+                ReapRing(true);
             }
             auto result = completed_requests.back();
             completed_requests.pop_back();
@@ -258,7 +262,6 @@ private:
             if (request->current_size > 0) {
                 [[likely]]
                 pending_requests.push_back(request);
-                ReapRing();
                 SubmitToRing();
             }
             if (is_last_request) {
@@ -340,9 +343,9 @@ private:
         void CleanUp() {
             // flush the last request and wait for it to complete
             RequestReady(true);
-            Wait();
             // flush misaligned pointers
             FlushMisalignedPointers();
+            Wait();
         }
     };
 };
