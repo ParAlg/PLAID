@@ -76,8 +76,8 @@ public:
                 SYSCALL(cqe->res);
                 auto completed_request = (IOVectorRequest *) io_uring_cqe_get_data(cqe);
                 requests_in_ring--;
-                completions->Push(completed_request);
                 completed_request->Reset();
+                completions->Push(completed_request);
                 // at least one reap is done at this point; further reaps are optional
                 reap_required = false;
             }
@@ -133,6 +133,8 @@ public:
 
         requests = (IOVectorRequest*)malloc(request_pool_size * sizeof(IOVectorRequest));
         for (size_t i = 0;i < request_pool_size; i++) {
+            IOVectorRequest *r = requests + i;
+            r->current_size = r->iovec_count = 0;
             free_requests.Push(requests + i);
         }
 
@@ -163,12 +165,14 @@ public:
             auto [buffer, buffer_size, true_size] = buckets[i].GatherMisalignedPointers();
             Bucket *bucket = &buckets[i];
             IOVectorRequest *request = bucket->request;
+            request->last_request = true;
             request->AddPointer((T*)buffer, buffer_size);
             bucket->file_size += request->current_size;
             SubmitRequest(request);
             result_files[i].file_size = bucket->file_size;
             result_files[i].true_size = bucket->file_size - buffer_size + true_size;
         }, 1);
+        // no more requests sent to the writer
         pending_requests.Close();
         io_thread->join();
     }
@@ -216,6 +220,7 @@ private:
     Bucket *buckets;
     IOVectorRequest *requests;
 
+    // should contain requests that are reset and ready to be reused
     SimpleQueue<IOVectorRequest*> free_requests;
     SimpleQueue<IOVectorRequest*> pending_requests;
 
@@ -229,6 +234,7 @@ private:
     using BucketAllocator = parlay::type_allocator<BucketData>;
 
     struct IOVectorRequest {
+        bool last_request = false;
         int fd = -1;
         size_t offset = -1;
         size_t current_size = 0;
@@ -244,8 +250,11 @@ private:
         }
 
         void Reset() {
-            for (size_t i = 0; i < iovec_count; i++) {
+            for (size_t i = 0; i < iovec_count - (int)last_request; i++) {
                 BucketAllocator::free((BucketData*)io_vectors[i].iov_base);
+            }
+            if (last_request) {
+                free(io_vectors[iovec_count - 1].iov_base);
             }
             current_size = 0;
             iovec_count = 0;

@@ -146,7 +146,7 @@ private:
                 if (buffer_index[bucket_index] == buffer_size) {
                     buffer_index[bucket_index] = 0;
                     intermediate_writer.Write(bucket_index, buckets[bucket_index], buffer_size);
-                    buckets[bucket_index] = (T *) malloc(buffer_size * sizeof(T));
+                    buckets[bucket_index] = (T*)bucket_allocator::alloc();
                 }
             }
             free(data);
