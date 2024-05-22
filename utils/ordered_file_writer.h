@@ -270,7 +270,6 @@ private:
 
         Bucket() = delete;
 
-        // FIXME: magic numbers here
         explicit Bucket(std::string &file_name) {
             current_file = open(file_name.c_str(), O_WRONLY | O_DIRECT | O_CREAT, 0744);
             SYSCALL(current_file);
