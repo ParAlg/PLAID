@@ -145,7 +145,8 @@ private:
                 // flush if bucket is full
                 if (buffer_index[bucket_index] == buffer_size) {
                     buffer_index[bucket_index] = 0;
-                    intermediate_writer.Write(bucket_index, buckets[bucket_index], buffer_size);
+                    // intermediate_writer.Write(bucket_index, buckets[bucket_index], buffer_size);
+                    bucket_allocator::free((BucketData*)buckets[bucket_index]);
                     buckets[bucket_index] = (T*)bucket_allocator::alloc();
                 }
             }
@@ -157,7 +158,8 @@ private:
             if (buffer_index[i] == 0) {
                 bucket_allocator::free((BucketData*)buckets[i]);
             } else {
-                intermediate_writer.Write(i, buckets[i], buffer_index[i]);
+                // intermediate_writer.Write(i, buckets[i], buffer_index[i]);
+                bucket_allocator::free((BucketData*)buckets[i]);
             }
         }
     }
