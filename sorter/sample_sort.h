@@ -157,7 +157,8 @@ private:
                     // flush if full
                     if (counter[bucket_index] == buffer_size) {
                         counter[bucket_index] = 0;
-                        intermediate_writer.Write(bucket_index, buckets[bucket_index], buffer_size);
+                        // intermediate_writer.Write(bucket_index, buckets[bucket_index], buffer_size);
+                        bucket_allocator::free((BucketData*)buckets[bucket_index]);
                         buckets[bucket_index] = (T*)bucket_allocator::alloc();
                     }
                     bucket_start += n_elements;
@@ -171,7 +172,8 @@ private:
             if (counter[i] == 0) {
                 bucket_allocator::free((BucketData*)buckets[i]);
             } else {
-                intermediate_writer.Write(i, buckets[i], counter[i]);
+                // intermediate_writer.Write(i, buckets[i], counter[i]);
+                bucket_allocator::free((BucketData*)buckets[i]);
             }
         }
     }
