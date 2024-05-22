@@ -8,6 +8,7 @@
 #include "utils/logger.h"
 #include "utils/file_utils.h"
 #include "config.h"
+#include "utils/simple_queue.h"
 #include <thread>
 #include <condition_variable>
 #include <mutex>
@@ -76,12 +77,7 @@ public:
      * @param size
      */
     void Push(T* data, size_t size) {
-        std::unique_lock<std::mutex> lock(buffer_lock);
-        while (buffer_queue.size() >= buffer_queue_size) {
-            buffer_writer_cond.wait(lock);
-        }
-        buffer_queue.emplace_back(data, size);
-        buffer_reader_cond.notify_one();
+        buffer_queue.Push({data, size});
     }
 
     /**
@@ -94,31 +90,13 @@ public:
      * @return pointer to a piece of data and its size if one is available; nullptr and 0 if the reader is closed
      *   and no longer has any data
      */
-    std::pair<T*, size_t> Poll(size_t timeout_microseconds = 1000) {
-        std::unique_lock<std::mutex> lock(buffer_lock);
-        while (buffer_queue.empty()) {
-            buffer_reader_cond.wait_for(lock, std::chrono::microseconds(timeout_microseconds));
-            if (!IsOpen()) {
-                return {nullptr, 0};
-            }
-        }
-        auto result = buffer_queue.front();
-        buffer_queue.pop_front();
-        buffer_writer_cond.notify_one();
-        return result;
-    }
-
-    bool IsEmpty() {
-        std::lock_guard<std::mutex> lock(buffer_lock);
-        return buffer_queue.empty();
+    std::pair<T*, size_t> Poll() {
+        static std::pair<T*, size_t> default_result(nullptr, 0);
+        return buffer_queue.Poll(default_result);
     }
 
     void Close() {
-        is_open = false;
-    }
-
-    bool IsOpen() {
-        return is_open && active_threads > 0;
+        buffer_queue.Close();
     }
 
     /**
@@ -145,9 +123,7 @@ private:
     // a single worker thread for managing file reading
     std::vector<std::unique_ptr<std::thread>> worker_threads;
     // a buffer queue containing data read from disk
-    std::deque<std::pair<T*, size_t>> buffer_queue;
-    std::mutex buffer_lock;
-    std::condition_variable buffer_reader_cond, buffer_writer_cond;
+    SimpleQueue<std::pair<T*, size_t>> buffer_queue;
 
     /**
      * A file that is currently being read
@@ -266,6 +242,9 @@ private:
         }
 
         reader->active_threads--;
+        if (reader->active_threads == 0) {
+            reader->Close();
+        }
     }
 };
 

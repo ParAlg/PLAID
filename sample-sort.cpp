@@ -108,7 +108,7 @@ std::shared_ptr<size_t> GenerateSmallSample(const std::string &prefix, size_t n)
             nums[i] = perm[i];
         });
     }
-    UnorderedFileWriter<size_t> writer(prefix, 1000, 5);
+    UnorderedFileWriter<size_t> writer(prefix, 128, 2);
     size_t step = std::min(1UL << 20, n);
     for (size_t i = 0; i < n; i += step) {
         writer.Push(std::shared_ptr<size_t>(nums + i, nop), std::min(step, n - i));

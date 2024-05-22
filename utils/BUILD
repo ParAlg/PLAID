@@ -58,13 +58,17 @@ cc_library(
     deps = [
         ":file_utils",
         ":logger",
+        ":simple_queue",
     ],
 )
 
 cc_library(
     name = "unordered_file_reader",
     srcs = ["unordered_file_reader.h"],
-    deps = [":logger"],
+    deps = [
+        ":logger",
+        ":simple_queue",
+    ],
 )
 
 cc_library(

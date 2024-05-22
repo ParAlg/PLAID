@@ -8,6 +8,7 @@
 #include "utils/logger.h"
 #include "config.h"
 #include "utils/file_utils.h"
+#include "utils/simple_queue.h"
 #include <thread>
 #include <condition_variable>
 #include <mutex>
@@ -41,7 +42,6 @@ public:
     }
 
     ~UnorderedFileWriter() {
-        Close();
         Wait();
         DLOG(INFO) << "FileWriter worker thread exited. " << num_files << " files created.";
     }
@@ -55,31 +55,17 @@ public:
                         << "Size (in bytes) must be aligned to the size of a page in O_DIRECT mode. "
                         << "Actual size: " << size * sizeof(T);
         auto request = new WriteRequest(std::move(data), size);
-        std::lock_guard<std::mutex> guard(wait_queue_lock);
-        wait_queue.push_back(request);
-        wait_queue_cond.notify_one();
+        wait_queue.Push(request);
     }
 
-    WriteRequest *Poll(size_t timeout_microseconds = 1000) {
-        std::unique_lock<std::mutex> lock(wait_queue_lock);
-        while (wait_queue.empty()) {
-            wait_queue_cond.wait_for(lock, std::chrono::microseconds(timeout_microseconds));
-            // TODO: how do different setups affect performance?
-            if (!is_open && wait_queue.empty()) {
-                return new WriteRequest();
-            }
-        }
-        auto *result = wait_queue.front();
-        wait_queue.pop_front();
+    WriteRequest *Poll() {
+        static WriteRequest empty_request({nullptr}, 0);
+        auto *result = wait_queue.Poll(&empty_request);
         return result;
     }
 
     void Close() {
-        is_open = false;
-    }
-
-    bool IsOpen() {
-        return is_open;
+        wait_queue.Close();
     }
 
     /**
@@ -87,6 +73,7 @@ public:
      * @return
      */
     size_t Wait() {
+        Close();
         for (auto &thread: worker_threads) {
             if (thread->joinable()) {
                 thread->join();
@@ -96,12 +83,9 @@ public:
     }
 
 private:
-    bool is_open = true;
     size_t num_files = 0;
     std::vector<std::unique_ptr<std::thread>> worker_threads;
-    std::deque<WriteRequest *> wait_queue;
-    std::mutex wait_queue_lock;
-    std::condition_variable wait_queue_cond;
+    SimpleQueue<WriteRequest *> wait_queue;
 
     struct WriteRequest {
         std::shared_ptr<T> data;

@@ -20,11 +20,11 @@ public:
         reader_cond.notify_one();
     }
 
-    T Poll() {
+    T Poll(T default_result = nullptr) {
         std::unique_lock<std::mutex> lock(mutex);
         while (queue.empty()) {
             if (!open) {
-                return nullptr;
+                return default_result;
             }
             reader_cond.wait(lock);
         }
