@@ -10,6 +10,7 @@
 #include <string>
 #include <functional>
 #include <set>
+#include <algorithm>
 
 #include "absl/container/btree_map.h"
 #include "parlay/primitives.h"
@@ -123,30 +124,43 @@ private:
         size_t buffer_size = SAMPLE_SORT_BUCKET_SIZE / sizeof(T);
         // each bucket stores a pointer to an array, which will hold temporary values in that bucket
         T *buckets[num_buckets];
-        unsigned int buffer_index[num_buckets];
+        unsigned int counter[num_buckets];
         for (size_t i = 0; i < num_buckets; i++) {
 //            // may need posix_memalign since writev under O_DIRECT expects pointers to be aligned as well
 //            posix_memalign((void**)&buckets[i], O_DIRECT_MULTIPLE, buffer_size * sizeof(T));
             buckets[i] = (T*)bucket_allocator::alloc();
-            buffer_index[i] = 0;
+            counter[i] = 0;
         }
         while (true) {
-            auto [data, size] = reader.Poll();
+            const auto [data, size] = reader.Poll();
             if (data == nullptr) {
                 break;
             }
-            // TODO: sort chunk in memory and then interleave samples with it
-            for (size_t i = 0; i < size; i++) {
-                // use binary search to find which bucket it belongs to
-                auto iter = std::upper_bound(samples.begin(), samples.end(), data[i], comp);
-                size_t bucket_index = std::distance(samples.begin(), iter);
-                // move data to bucket
-                buckets[bucket_index][buffer_index[bucket_index]++] = data[i];
-                // flush if bucket is full
-                if (buffer_index[bucket_index] == buffer_size) {
-                    buffer_index[bucket_index] = 0;
-                    intermediate_writer.Write(bucket_index, buckets[bucket_index], buffer_size);
-                    buckets[bucket_index] = (T*)bucket_allocator::alloc();
+            auto temp = parlay::make_slice(data, data + size);
+            parlay::sort_inplace(temp, comp);
+//            std::sort(data, data + size, comp);
+            size_t bucket_start = 0;
+            for (size_t bucket_index = 0; bucket_index < num_buckets; bucket_index++) {
+                size_t bucket_end;
+                if (bucket_index == num_buckets - 1) {
+                    bucket_end = size;
+                } else {
+                    T sample = samples[bucket_index];
+                    bucket_end = std::upper_bound(data + bucket_start, data + size, sample, comp) - data;
+                }
+                // keep copying until everything that belongs to this bucket is done
+                while (bucket_end - bucket_start > 0) {
+                    size_t n_elements = std::min(bucket_end - bucket_start, buffer_size - counter[bucket_index]);
+                    size_t n_bytes = n_elements * sizeof(T);
+                    memcpy(buckets[bucket_index] + counter[bucket_index], &data[bucket_start], n_bytes);
+                    counter[bucket_index] += n_elements;
+                    // flush if full
+                    if (counter[bucket_index] == buffer_size) {
+                        counter[bucket_index] = 0;
+                        intermediate_writer.Write(bucket_index, buckets[bucket_index], buffer_size);
+                        buckets[bucket_index] = (T*)bucket_allocator::alloc();
+                    }
+                    bucket_start += n_elements;
                 }
             }
             free(data);
@@ -154,10 +168,10 @@ private:
         // cleanup partially full buckets
         for (size_t i = 0; i < num_buckets; i++) {
             // if bucket is empty, free and do nothing else; otherwise send to writer
-            if (buffer_index[i] == 0) {
+            if (counter[i] == 0) {
                 bucket_allocator::free((BucketData*)buckets[i]);
             } else {
-                intermediate_writer.Write(i, buckets[i], buffer_index[i]);
+                intermediate_writer.Write(i, buckets[i], counter[i]);
             }
         }
     }
