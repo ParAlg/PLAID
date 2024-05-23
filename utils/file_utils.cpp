@@ -78,6 +78,28 @@ std::string GetFileName(const std::string &prefix, size_t file_number) {
 }
 
 /**
+ * Ensure that a byte offset conforms to disk alignment requirements by rounding down.
+ * For example, 4098 would become 4096 if O_DIRECT_MULTIPLE is set to 4096.
+ *
+ * @param original
+ * @return
+ */
+inline size_t AlignDown(size_t original) {
+    return original / O_DIRECT_MULTIPLE * O_DIRECT_MULTIPLE;
+}
+
+/**
+ * Ensure that a byte offset conforms to disk alignment requirements by rounding up.
+ * For example, 4098 would become 8192 if O_DIRECT_MULTIPLE is set to 4096.
+ *
+ * @param original
+ * @return
+ */
+inline size_t AlignUp(size_t original) {
+    return (original + O_DIRECT_MULTIPLE - 1) / O_DIRECT_MULTIPLE * O_DIRECT_MULTIPLE;
+}
+
+/**
  * Read O_DIRECT_MULTIPLE bytes starting from the specified offset of the file
  *
  * @param file_name
@@ -109,10 +131,10 @@ void ReadFileOnce(const std::string &file_name, void *buffer, size_t offset) {
 void ReadFileOnce(const std::string &file_name, void *buffer, size_t start, size_t read_size) {
     int fd = open(file_name.c_str(), O_RDONLY | O_DIRECT);
     SYSCALL(fd);
-    size_t start_aligned = start / O_DIRECT_MULTIPLE * O_DIRECT_MULTIPLE;
+    size_t start_aligned = AlignDown(start);
     size_t end = start + read_size;
     // compute the nearest aligned byte
-    size_t end_aligned = (end + O_DIRECT_MULTIPLE - 1) / O_DIRECT_MULTIPLE * O_DIRECT_MULTIPLE;
+    size_t end_aligned = AlignUp(end);
     size_t aligned_read_size = end_aligned - start_aligned;
     auto res = lseek64(fd, (long) start_aligned, SEEK_SET);
     SYSCALL(res);
@@ -132,9 +154,7 @@ void ReadFileOnce(const std::string &file_name, void *buffer, size_t start, size
  */
 void *ReadEntireFile(const std::string &file_name, size_t read_size) {
     // align the read for O_DIRECT
-    if (read_size % O_DIRECT_MULTIPLE != 0) {
-        read_size += O_DIRECT_MULTIPLE - read_size % O_DIRECT_MULTIPLE;
-    }
+    read_size = AlignUp(read_size);
     void *buffer = malloc(read_size);
     int fd = open(file_name.c_str(), O_RDONLY | O_DIRECT);
     SYSCALL(fd);
