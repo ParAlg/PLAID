@@ -13,6 +13,7 @@ cc_binary(
     deps = [
         "//utils:io_utils",
         "//utils:logger",
+        "//utils:random_read",
     ],
 )
 
@@ -30,7 +31,7 @@ cc_binary(
 
 cc_library(
     name = "config",
-    hdrs = ["config.h"],
+    hdrs = ["configs.h"],
     visibility = ["//visibility:public"],
     deps = [],
 )

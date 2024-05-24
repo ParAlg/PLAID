@@ -1,0 +1,109 @@
+//
+// Created by peter on 5/23/24.
+//
+
+#ifndef SORTING_RANDOM_READ_H
+#define SORTING_RANDOM_READ_H
+
+#include <vector>
+
+#include "liburing.h"
+#include "absl/log/log.h"
+#include "parlay/sequence.h"
+
+#include "configs.h"
+#include "utils/file_utils.h"
+#include "utils/logger.h"
+
+constexpr size_t GetRandomBatchReadBufferSize(size_t size) {
+    return AlignUp(size + O_DIRECT_MULTIPLE - 1);
+}
+
+template<typename T>
+std::vector<T> RandomBatchRead(const std::vector<FileInfo> &files,
+                               const parlay::sequence<size_t> &requests) {
+    const size_t num_files = files.size();
+    size_t size_prefix_sum[num_files];
+    for (size_t i = 0; i < num_files; i++) {
+        auto prev = i == 0 ? 0 : size_prefix_sum[i - 1];
+        size_prefix_sum[i] = files[i].true_size + prev;
+        if (files[i].true_size == 0) {
+            [[unlikely]];
+            LOG(ERROR) << "File's true size is not determined or an empty file is passed.";
+        }
+    }
+
+    struct ReadRequest {
+        size_t offset;
+        unsigned char buffer[GetRandomBatchReadBufferSize(sizeof(T))];
+    };
+
+    const size_t NUM_BUFFERS = 4096 * 4;
+    auto *buffers = (ReadRequest *)malloc(sizeof(ReadRequest) * NUM_BUFFERS);
+    std::vector<size_t> free_buffers;
+    for (size_t i = 0; i < NUM_BUFFERS; i++) {
+        free_buffers.push_back(i);
+    }
+
+    std::vector<T> results;
+    results.reserve(requests.size());
+
+    const unsigned IO_URING_ENTRIES = 4096;
+    struct io_uring ring;
+    io_uring_queue_init(IO_URING_ENTRIES, &ring, IORING_SETUP_SINGLE_ISSUER);
+    // open all files in parallel; could be sped up using async open calls, but performance gain is probably negligible
+    int fds[num_files];
+    parlay::parallel_for(0, num_files, [&](size_t i) {
+        fds[i] = open(files[i].file_name.c_str(), O_RDONLY | O_DIRECT);
+    }, 1);
+    size_t i = 0, pending_requests = 0, requests_in_ring = 0;
+    while (i < requests.size() || requests_in_ring > 0) {
+        // there are available buffers and remaining requests; keep submitting
+        while (i < requests.size() && !free_buffers.empty()) {
+            auto byte_offset = requests[i] * sizeof(T);
+            size_t start = AlignDown(byte_offset), end = AlignUp(byte_offset + sizeof(T));
+            size_t buffer_index = free_buffers.back();
+            free_buffers.pop_back();
+            buffers[buffer_index].offset = byte_offset - start;
+            auto file_num = std::upper_bound(size_prefix_sum, size_prefix_sum + num_files, start) - size_prefix_sum;
+            struct io_uring_sqe *sqe = io_uring_get_sqe(&ring);
+            io_uring_prep_read(sqe, fds[file_num], buffers[buffer_index].buffer, end - start,
+                               file_num == 0 ? start : start - size_prefix_sum[file_num - 1]);
+            io_uring_sqe_set_data(sqe, reinterpret_cast<void*>(buffer_index));
+            i++;
+            pending_requests++;
+            if (pending_requests == IO_URING_ENTRIES || i == requests.size()) {
+                int submitted = io_uring_submit(&ring);
+                SYSCALL(submitted);
+                requests_in_ring += submitted;
+                pending_requests = 0;
+            }
+        }
+        // at this point, we have submitted as much as we can; now is time to reap
+        bool wait = true;
+        while (requests_in_ring > 0) {
+            struct io_uring_cqe *cqe;
+            if (wait) {
+                SYSCALL(io_uring_wait_cqe(&ring, &cqe));
+                wait = false;
+            } else {
+                int result = io_uring_peek_cqe(&ring, &cqe);
+                if (result != 0) {
+                    break;
+                }
+            }
+            SYSCALL(cqe->res);
+            io_uring_cqe_seen(&ring, cqe);
+            requests_in_ring--;
+            auto buffer_index = reinterpret_cast<size_t>(io_uring_cqe_get_data(cqe));
+            free_buffers.push_back(buffer_index);
+            ReadRequest *buffer = &buffers[buffer_index];
+            results.push_back(*reinterpret_cast<T*>(buffer->buffer + buffer->offset));
+        }
+    }
+    io_uring_queue_exit(&ring);
+    free(buffers);
+    return results;
+}
+
+#endif //SORTING_RANDOM_READ_H

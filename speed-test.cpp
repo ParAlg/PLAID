@@ -4,12 +4,14 @@
  * At the time of this commit, the unordered writer writes at 80GiB/s and reader at 70GiB/s.
  * The result seems good enough. It's not at fio's level, but should be sufficient for our algorithm.
  */
+#include <map>
 #include "utils/unordered_file_writer.h"
 #include "absl/log/log.h"
 #include "utils/ordered_file_writer.h"
 #include "parlay/random.h"
 #include "parlay/primitives.h"
 #include "utils/unordered_file_reader.h"
+#include "utils/random_read.h"
 
 void UnorderedIOTest(int argc, char **argv) {
     CHECK(argc > 2) << "Expected an argument on write size";
@@ -119,18 +121,70 @@ void InMemorySortingTest(int argc, char **argv) {
     timer.next("Sorting done");
 }
 
-std::function<void(int, char **)> test_functions[] = {
-    UnorderedIOTest,
-    ReadOnlyTest,
-    OrderedFileWriterTest,
-    InMemorySortingTest};
+void RandomReadTest(int argc, char **argv) {
+    if (argc < 4) {
+        std::cout << "Need arguments for number of elements and number of queries\n";
+        return;
+    }
+    size_t n = 1UL << std::strtol(argv[2], nullptr, 10), m = 1UL << std::strtol(argv[3], nullptr, 10);
+    parlay::internal::timer timer("random read");
+
+    std::random_device rd;
+    auto file_name = GetFileName("random_read_test", rd());
+    LOG(INFO) << "Using " << file_name;
+    size_t buffer_size = sizeof(size_t) * n;
+    auto *buffer = static_cast<size_t *>(malloc(buffer_size));
+    for (size_t i = 0; i < n; i++) {
+        buffer[i] = i;
+    }
+    int fd = open(file_name.c_str(), O_WRONLY | O_CREAT | O_DIRECT, 0744);
+    size_t bytes_written = 0;
+    while (bytes_written < buffer_size) {
+        size_t result = write(fd, (unsigned char *)buffer + bytes_written, buffer_size - bytes_written);
+        SYSCALL(result);
+        bytes_written += result;
+    }
+    close(fd);
+    free(buffer);
+
+    timer.next("File setup complete.");
+
+    parlay::random_generator gen;
+    std::uniform_int_distribution<size_t> dis(0, n-1);
+    parlay::sequence<size_t> queries = parlay::map(parlay::iota(m), [&](size_t i) {
+        auto g = gen[i];
+        return dis(g);
+    });
+    timer.next("Begin random read");
+    auto result = RandomBatchRead<size_t>({FileInfo(file_name, buffer_size, buffer_size)}, queries);
+    timer.next("Random read completed");
+    std::sort(result.begin(), result.end());
+    auto expected = parlay::sort(queries);
+    size_t num_mismatches = 0;
+    for (size_t i = 0; i < m; i++) {
+        if (result[i] != expected[i]) {
+            LOG(ERROR) << "Mismatch at index " << i << ": expected " << expected[i] << ", found " << result[i];
+            num_mismatches++;
+            if (num_mismatches >= 20) {
+                break;
+            }
+        }
+    }
+}
+
+std::map<std::string, std::function<void(int, char **)>> test_functions = {
+    {"unordered_io", UnorderedIOTest},
+    {"read_only", ReadOnlyTest},
+    {"ordered_writer", OrderedFileWriterTest},
+    {"sorting", InMemorySortingTest},
+    {"rand_read", RandomReadTest}};
 
 int main(int argc, char **argv) {
     if (argc < 2) {
         std::cout << "Usage: " << argv[0] << " " << "<which test to perform> <test-specific arguments>\n";
         return 0;
     }
-    int test_number = (int)std::strtol(argv[1], nullptr, 10);
-    std::cout << "Performing test_number " << test_number << "\n";
-    test_functions[test_number](argc, argv);
+    std::string test_name(argv[1]);
+    std::cout << "Performing " << test_name << "\n";
+    test_functions[test_name](argc, argv);
 }

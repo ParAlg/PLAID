@@ -96,3 +96,14 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [],
 )
+
+cc_library(
+    name = "random_read",
+    srcs = ["random_read.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":file_utils",
+        "@com_google_absl//absl/log",
+        "@parlaylib//parlay:sequence",
+    ],
+)

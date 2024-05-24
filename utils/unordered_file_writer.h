@@ -6,7 +6,7 @@
 #define SORTING_UNORDERED_FILE_WRITER_H
 
 #include "utils/logger.h"
-#include "config.h"
+#include "configs.h"
 #include "utils/file_utils.h"
 #include "utils/simple_queue.h"
 #include <thread>

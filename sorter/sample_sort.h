@@ -16,7 +16,7 @@
 #include "parlay/internal/get_time.h"
 #include "parlay/alloc.h"
 
-#include "config.h"
+#include "configs.h"
 #include "utils/file_utils.h"
 #include "utils/unordered_file_reader.h"
 #include "utils/ordered_file_writer.h"

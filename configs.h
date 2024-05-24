@@ -2,8 +2,8 @@
 // Created by peter on 3/1/24.
 //
 
-#ifndef SORTING_CONFIG_H
-#define SORTING_CONFIG_H
+#ifndef SORTING_CONFIGS_H
+#define SORTING_CONFIGS_H
 
 #include <cstddef>
 
@@ -26,4 +26,4 @@ constexpr size_t O_DIRECT_MULTIPLE = 4096;
 constexpr size_t METADATA_SIZE = 2;
 constexpr size_t IO_URING_BUFFER_SIZE = 60;
 
-#endif //SORTING_CONFIG_H
+#endif //SORTING_CONFIGS_H

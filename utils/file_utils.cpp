@@ -9,7 +9,7 @@
 #include "parlay/parallel.h"
 
 #include "file_utils.h"
-#include "./config.h"
+#include "./configs.h"
 #include "utils/logger.h"
 
 using std::filesystem::directory_iterator;
@@ -75,28 +75,6 @@ void GetFileInfo(std::vector<FileInfo> &info) {
 std::string GetFileName(const std::string &prefix, size_t file_number) {
     size_t ssd_number = file_number % SSD_COUNT;
     return "/mnt/ssd" + std::to_string(ssd_number) + "/" + prefix + std::to_string(file_number);
-}
-
-/**
- * Ensure that a byte offset conforms to disk alignment requirements by rounding down.
- * For example, 4098 would become 4096 if O_DIRECT_MULTIPLE is set to 4096.
- *
- * @param original
- * @return
- */
-inline size_t AlignDown(size_t original) {
-    return original / O_DIRECT_MULTIPLE * O_DIRECT_MULTIPLE;
-}
-
-/**
- * Ensure that a byte offset conforms to disk alignment requirements by rounding up.
- * For example, 4098 would become 8192 if O_DIRECT_MULTIPLE is set to 4096.
- *
- * @param original
- * @return
- */
-inline size_t AlignUp(size_t original) {
-    return (original + O_DIRECT_MULTIPLE - 1) / O_DIRECT_MULTIPLE * O_DIRECT_MULTIPLE;
 }
 
 /**

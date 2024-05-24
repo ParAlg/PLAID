@@ -7,7 +7,7 @@
 
 #include "utils/logger.h"
 #include "utils/file_utils.h"
-#include "config.h"
+#include "configs.h"
 #include "utils/simple_queue.h"
 #include <thread>
 #include <condition_variable>
