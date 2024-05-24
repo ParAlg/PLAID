@@ -20,6 +20,7 @@
 #include "utils/file_utils.h"
 #include "utils/unordered_file_reader.h"
 #include "utils/ordered_file_writer.h"
+#include "utils/random_read.h"
 
 /**
  * Perform external memory sample sort
@@ -33,61 +34,40 @@ private:
      * Obtain random samples from a list of files
      *
      * @param file_list
-     * @param num_samples
-     * @return A vector of <code>num_samples</code> samples
+     * @param num_pivots
+     * @return A vector of <code>num_pivots</code> samples
      */
-    static std::vector<T> GetSamples(std::vector<FileInfo> &file_list, size_t num_samples) {
-        // num_samples is assumed to be < 10000, so parallelism shouldn't be necessary
-        size_t size_prefix_sum[file_list.size()];
-        for (size_t i = 0; i < file_list.size(); i++) {
-            auto prev = i == 0 ? 0 : size_prefix_sum[i - 1];
-            size_prefix_sum[i] = file_list[i].true_size + prev;
-            if (file_list[i].true_size == 0 && file_list[i].file_size > 0) {
-                [[unlikely]]
-                LOG(ERROR) << "File's true size should already be determined";
-            }
+    static std::vector<T> GetPivots(const std::vector<FileInfo> &file_list, size_t num_pivots) {
+        // num_pivots is assumed to be < 1024, so parallelism shouldn't be necessary
+        size_t total_size = 0;
+        for (const auto &info : file_list) {
+            total_size += info.true_size;
         }
-        size_t total_size = size_prefix_sum[file_list.size() - 1];
         // n is the number of elements in all files
         size_t n = total_size / sizeof(T);
         DLOG(INFO) << "Found " << n << " elements in input files";
-        if (num_samples > n) {
+        if (num_pivots > n) {
             [[unlikely]]
-            LOG(ERROR) << "Sample size is " << num_samples << " but we only have " << n << " elements";
+            LOG(ERROR) << "Sample size is " << num_pivots << " but we only have " << n << " elements";
         }
-        // choose num_samples from n elements
-        // use rejection sampling; the Vitter algorithms mentioned in the link are viable alternatives
-        // (https://cs.stackexchange.com/questions/104930/efficient-n-choose-k-random-sampling)
-        std::set<size_t> sample_indices;
-        std::random_device rd;
-        std::mt19937_64 rng(rd());
-        std::uniform_int_distribution<size_t> dis(0, n);
-        for (size_t i = 0; i < num_samples; i++) {
-            while (true) {
-                size_t selected = dis(rng);
-                if (!sample_indices.count(selected)) {
-                    sample_indices.insert(selected);
-                    break;
-                }
-            }
-        }
-        std::vector<size_t> sample_indices_list(sample_indices.begin(), sample_indices.end());
+        size_t oversample_size = std::min(n, num_pivots * num_pivots + 2 * num_pivots);
+        parlay::random_generator generator;
+        std::uniform_int_distribution<size_t> dis(0, n - 1);
+        auto samples = parlay::sort(RandomBatchRead<T>(file_list, parlay::map(parlay::iota(oversample_size), [&](size_t i) {
+            auto gen = generator[i];
+            return dis(gen);
+        })));
         std::vector<T> result;
-        std::mutex result_lock;
-        // perform file IO in parallel to get the content of each sample
-        parlay::parallel_for(0, num_samples, [&](size_t i) {
-            auto target_byte = sample_indices_list[i] * sizeof(T);
-            // use binary search to find which file contains the target byte
-            auto file_num =
-                std::upper_bound(size_prefix_sum, size_prefix_sum + file_list.size(), target_byte) - size_prefix_sum;
-            auto file_offset = target_byte - (file_num == 0 ? 0 : size_prefix_sum[file_num - 1]);
-            // a buffer for file IO
-            unsigned char buffer[sizeof(T)];
-            ReadFileOnce(file_list[file_num].file_name, buffer, file_offset, sizeof(T));
-            // avoid concurrent access to list of samples
-            std::lock_guard<std::mutex> lock(result_lock);
-            result.push_back(*(T *) (buffer));
-        }, 1);
+        size_t remaining_pivots = num_pivots;
+        size_t i = 0;
+        while (remaining_pivots > 0) {
+            i += std::max(1UL, (oversample_size - i - remaining_pivots) / (remaining_pivots + 1));
+            result.push_back(samples[i]);
+            // samples[i] is taken, so the first available sample is the next one
+            i++;
+            remaining_pivots--;
+        }
+
         return result;
     }
 
@@ -227,7 +207,7 @@ public:
         // FIXME: change this file name to a different one (possibly randomized?)
         intermediate_writer.Initialize("spfx_", num_samples + 1, 1 << 20);
         timer.next("Before sampling " + std::to_string(num_samples) + " samples with bucket size ");
-        auto samples = GetSamples(input_files, num_samples);
+        auto samples = GetPivots(input_files, num_samples);
         const auto sorted_pivots = parlay::sort(samples, comp);
         timer.next("After sampling and before assign to bucket");
         parlay::parallel_for(0, THREAD_COUNT, [&](int i) {

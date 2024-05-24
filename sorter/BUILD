@@ -6,6 +6,7 @@ cc_library(
         "//:config",
         "//utils:io_utils",
         "//utils:logger",
+        "//utils:random_read",
         "@com_google_absl//absl/container:btree",
         "@parlaylib//parlay:primitives",
         "@parlaylib//parlay/internal:get_time",

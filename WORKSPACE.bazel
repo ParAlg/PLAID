@@ -9,7 +9,7 @@ git_repository(
 
 git_repository(
     name = "parlaylib",
-    remote = "https://github.com/ParAlg/parlaylib.git",
     commit = "6b4a4cdbfeb3c481608a42db0230eb6ebb87bf8d",
+    remote = "https://github.com/ParAlg/parlaylib.git",
     strip_prefix = "include/",
 )

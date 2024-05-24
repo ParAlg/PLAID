@@ -20,7 +20,7 @@ constexpr size_t GetRandomBatchReadBufferSize(size_t size) {
 }
 
 template<typename T>
-std::vector<T> RandomBatchRead(const std::vector<FileInfo> &files,
+parlay::sequence<T> RandomBatchRead(const std::vector<FileInfo> &files,
                                const parlay::sequence<size_t> &requests) {
     const size_t num_files = files.size();
     size_t size_prefix_sum[num_files];
@@ -45,7 +45,7 @@ std::vector<T> RandomBatchRead(const std::vector<FileInfo> &files,
         free_buffers.push_back(i);
     }
 
-    std::vector<T> results;
+    parlay::sequence<T> results;
     results.reserve(requests.size());
 
     const unsigned IO_URING_ENTRIES = 4096;
