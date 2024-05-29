@@ -253,7 +253,7 @@ private:
 
         void Reset() {
             for (size_t i = 0; i < iovec_count - (int)last_request; i++) {
-                BucketAllocator::free((BucketData*)io_vectors[i].iov_base);
+                free((BucketData*)io_vectors[i].iov_base);
             }
             if (last_request) {
                 free(io_vectors[iovec_count - 1].iov_base);
@@ -307,7 +307,7 @@ private:
                 auto [pointer, count] = misaligned_pointers[i];
                 size_t pointer_size = count * sizeof(T);
                 memcpy(write_buffer + buffer_position, pointer, pointer_size);
-                BucketAllocator::free((BucketData*)pointer);
+                free((BucketData*)pointer);
                 buffer_position += pointer_size;
             }
             *(uint16_t*)(&write_buffer[target_write_size - METADATA_SIZE]) = (uint16_t)byte_diff;

@@ -103,7 +103,7 @@ void OrderedFileWriterTest(int argc, char **argv) {
     parlay::random_generator gen;
     parlay::parallel_for(0, TOTAL_WRITE_SIZE / SINGLE_WRITE_SIZE, [&](size_t i) {
         std::uniform_int_distribution<size_t> dis(0, NUM_BUCKETS - 1);
-        auto array = reinterpret_cast<Type*>(Allocator::alloc());
+        auto array = reinterpret_cast<Type*>(malloc(SINGLE_WRITE_SIZE));
         for (Type index = 0; index < (Type) n; index++) {
             array[index] = index * index - 5 * index - 1;
         }
