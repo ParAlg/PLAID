@@ -1,4 +1,14 @@
 cc_binary(
+    name = "test",
+    srcs = ["test.cpp"],
+    deps = [
+        "//utils:simple_queue",
+        "@parlaylib//parlay:alloc",
+        "@parlaylib//parlay:random",
+    ],
+)
+
+cc_binary(
     name = "sample_sort",
     srcs = ["sample-sort.cpp"],
     deps = [
