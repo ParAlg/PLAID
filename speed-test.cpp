@@ -86,11 +86,16 @@ void ReadOnlyTest(int argc, char **argv) {
 }
 
 void OrderedFileWriterTest(int argc, char **argv) {
+    struct WriterData {
+        unsigned char data[SAMPLE_SORT_BUCKET_SIZE];
+    };
+    using Allocator = parlay::type_allocator<WriterData>;
+
     CHECK(argc > 3) << "Expected an argument on total write size and number of buckets";
     using Type = long long;
     const std::string prefix = "test_files";
     const size_t TOTAL_WRITE_SIZE = 1UL << std::strtol(argv[2], nullptr, 10);
-    const size_t SINGLE_WRITE_SIZE = 4 * (1UL << 10);
+    const size_t SINGLE_WRITE_SIZE = SAMPLE_SORT_BUCKET_SIZE;
     const size_t NUM_BUCKETS = std::strtol(argv[3], nullptr, 10);
     OrderedFileWriter<Type, SAMPLE_SORT_BUCKET_SIZE> writer(prefix, NUM_BUCKETS, 4 * (1 << 20));
     const size_t n = SINGLE_WRITE_SIZE / sizeof(Type);
@@ -98,7 +103,7 @@ void OrderedFileWriterTest(int argc, char **argv) {
     parlay::random_generator gen;
     parlay::parallel_for(0, TOTAL_WRITE_SIZE / SINGLE_WRITE_SIZE, [&](size_t i) {
         std::uniform_int_distribution<size_t> dis(0, NUM_BUCKETS - 1);
-        auto array = (Type *) malloc(SINGLE_WRITE_SIZE);
+        auto array = reinterpret_cast<Type*>(Allocator::alloc());
         for (Type index = 0; index < (Type) n; index++) {
             array[index] = index * index - 5 * index - 1;
         }

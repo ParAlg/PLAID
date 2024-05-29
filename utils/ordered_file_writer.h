@@ -129,13 +129,15 @@ public:
         this->num_buckets = bucket_count;
         this->io_threshold = file_flush_threshold;
         // FIXME: adjust this
-        request_pool_size = bucket_count * 100;
+        request_pool_size = bucket_count * 10;
 
         requests = (IOVectorRequest*)malloc(request_pool_size * sizeof(IOVectorRequest));
         for (size_t i = 0;i < request_pool_size; i++) {
             IOVectorRequest *r = requests + i;
-            r->current_size = r->iovec_count = 0;
-            free_requests.Push(requests + i);
+            r->current_size = 0;
+            r->iovec_count = 0;
+            r->last_request = false;
+            free_requests.Push(r);
         }
 
         // allocate memory for all buckets
