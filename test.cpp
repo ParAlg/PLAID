@@ -2,7 +2,7 @@
 #include <queue>
 #include <mutex>
 
-constexpr size_t TOTAL_SIZE = 1UL << 38;
+constexpr size_t TOTAL_SIZE = 1UL << 35;
 constexpr size_t BLOCK_SIZE = 1 << 14;
 
 struct Test {
@@ -10,59 +10,36 @@ struct Test {
 };
 using Allocator = parlay::type_allocator<Test>;
 
-struct Consumer {
+std::queue<Test*> request_queue;
+std::mutex mutex;
 
-    std::queue<Test*> request_queue;
-    std::mutex mutex;
-    std::thread t;
-
-    static void ConsumerThread(Consumer *consumer) {
-        size_t freed = 0;
-        auto *queue = &consumer->request_queue;
-        while (freed < TOTAL_SIZE) {
-            while (true) {
-                std::lock_guard<std::mutex> lock(consumer->mutex);
-                if (queue->empty()) {
-                    continue;
-                }
-                Test* data = queue->front();
-                queue->pop();
-                if (data != nullptr) {
-                    Allocator::free(data);
-                    freed += BLOCK_SIZE;
-                } else {
-                    break;
-                }
-            }
+void ConsumerThread() {
+    size_t freed = 0;
+    while (freed < TOTAL_SIZE) {
+        mutex.lock();
+        if (request_queue.empty()) {
+            mutex.unlock();
+            continue;
         }
+        Test* data = request_queue.front();
+        request_queue.pop();
+        mutex.unlock();
+        Allocator::free(data);
+        freed += BLOCK_SIZE;
     }
+}
 
-    Consumer() {
-        t = std::thread(ConsumerThread, this);
-    }
-
-    ~Consumer() {
-        t.join();
-    }
-
-    void Add(void *ptr) {
-        std::lock_guard<std::mutex> lock(mutex);
-        request_queue.push((Test*)ptr);
-    }
-};
-
-Consumer *writer;
-
-void thread() {
+void ProducerThread() {
     auto *ptr = Allocator::alloc();
     memset(ptr, 3, BLOCK_SIZE);
-    writer->Add(ptr);
+    std::lock_guard<std::mutex> lock(mutex);
+    request_queue.push((Test*)ptr);
 }
 
 int main() {
-    writer = new Consumer();
+    std::thread t(ConsumerThread);
     parlay::parallel_for(0, TOTAL_SIZE / BLOCK_SIZE, [&](size_t i){
-        thread();
+        ProducerThread();
     }, 1);
-    delete writer;
+    t.join();
 }
