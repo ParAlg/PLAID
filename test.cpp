@@ -37,9 +37,12 @@ void ProducerThread() {
 }
 
 int main() {
-    std::thread t(ConsumerThread);
-    parlay::parallel_for(0, TOTAL_SIZE / BLOCK_SIZE, [&](size_t i){
-        ProducerThread();
-    }, 1);
-    t.join();
+    parlay::par_do([&]() {
+        std::thread t(ConsumerThread);
+        t.join();
+    }, [&]() {
+        parlay::parallel_for(0, TOTAL_SIZE / BLOCK_SIZE, [&](size_t i){
+            ProducerThread();
+        }, 1);
+    });
 }
