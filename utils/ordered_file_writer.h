@@ -134,9 +134,7 @@ public:
         requests = (IOVectorRequest*)malloc(request_pool_size * sizeof(IOVectorRequest));
         for (size_t i = 0;i < request_pool_size; i++) {
             IOVectorRequest *r = requests + i;
-            r->current_size = 0;
-            r->iovec_count = 0;
-            r->last_request = false;
+            new(r) IOVectorRequest();
             free_requests.Push(r);
         }
 
@@ -244,6 +242,8 @@ private:
         iovec io_vectors[IO_VECTOR_SIZE];
         uint32_t iovec_count = 0;
 
+        IOVectorRequest() = default;
+
         void AddPointer(T* pointer, size_t size) {
             io_vectors[iovec_count].iov_base = pointer;
             io_vectors[iovec_count].iov_len = size;
@@ -252,8 +252,12 @@ private:
         }
 
         void Reset() {
-            for (size_t i = 0; i < iovec_count - (int)last_request; i++) {
-                BucketAllocator::free((BucketData*)io_vectors[i].iov_base);
+            for (size_t i = 0; i < iovec_count - (last_request ? 1 : 0); i++) {
+#ifndef USE_PARLAY_TYPE_ALLOCATOR
+                free(io_vectors[i].iov_base);
+#else
+                BucketAllocator::free(reinterpret_cast<BucketData*>(io_vectors[i].iov_base));
+#endif
             }
             if (last_request) {
                 free(io_vectors[iovec_count - 1].iov_base);
@@ -307,7 +311,11 @@ private:
                 auto [pointer, count] = misaligned_pointers[i];
                 size_t pointer_size = count * sizeof(T);
                 memcpy(write_buffer + buffer_position, pointer, pointer_size);
+#ifndef USE_PARLAY_TYPE_ALLOCATOR
+                free(pointer);
+#else
                 BucketAllocator::free((BucketData*)pointer);
+#endif
                 buffer_position += pointer_size;
             }
             *(uint16_t*)(&write_buffer[target_write_size - METADATA_SIZE]) = (uint16_t)byte_diff;
