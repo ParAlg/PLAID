@@ -1,16 +1,16 @@
 #include "parlay/alloc.h"
-#include "parlay/random.h"
 #include "utils/simple_queue.h"
 
 constexpr size_t TOTAL_SIZE = 1UL << 38;
 constexpr size_t BLOCK_SIZE = 1 << 14;
 constexpr size_t QUEUE_COUNT = 128;
 
+struct Test {
+    unsigned char data[BLOCK_SIZE];
+};
+using Allocator = parlay::type_allocator<Test>;
+
 struct Writer {
-    struct Test {
-        unsigned char data[BLOCK_SIZE];
-    };
-    using Allocator = parlay::type_allocator<Test>;
 
     SimpleQueue<Test*> request_queue;
     std::thread t;
@@ -42,12 +42,8 @@ struct Writer {
         request_queue.Push((Test*)ptr);
     }
 };
-Writer *writer;
 
-struct Test {
-    unsigned char data[BLOCK_SIZE];
-};
-using Allocator = parlay::type_allocator<Test>;
+Writer *writer;
 
 void thread() {
     auto *ptr = Allocator::alloc();
