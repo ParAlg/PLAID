@@ -28,7 +28,7 @@ struct Consumer {
                 Test* data = queue->front();
                 queue->pop();
                 if (data != nullptr) {
-                    // Allocator::free(data);
+                    Allocator::free(data);
                     freed += BLOCK_SIZE;
                 } else {
                     break;
