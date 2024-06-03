@@ -228,32 +228,15 @@ public:
         // FIXME: should allow as much parallelism as internal memory allows; need to calculate memory budget
         //   also, this can get tricky since using a conditional variable to guard against memory overflow
         //   may result in suboptimal performance
-        parlay::parallel_for(0, THREAD_COUNT, [&](int i) {
-            // each thread gets a bucket and sorts the content of that bucket in internal memory
-            FileInfo file_info;
-            size_t bucket_number;
-            while (true) {
-                // get a bucket
-                {
-                    std::lock_guard<std::mutex> lock(bucket_list_lock);
-                    if (bucket_list.empty()) {
-                        return;
-                    }
-                    file_info = bucket_list.back();
-                    bucket_list.pop_back();
-                    bucket_number = bucket_list.size();
-                }
-                // sort this bucket in internal memory
-                auto result_name = GetFileName(result_prefix, bucket_number);
-                SortBucket(file_info, result_name, comp);
-                result_list[bucket_number].file_name = result_name;
-                result_list[bucket_number].file_size = file_info.file_size;
-                result_list[bucket_number].true_size = file_info.true_size;
-            }
-        }, 1);
+        parlay::sequence<FileInfo> results = parlay::map(parlay::iota(bucket_list.size()), [&](size_t i) {
+            auto file_info = bucket_list[i];
+            auto result_name = GetFileName(result_prefix, i);
+            SortBucket(file_info, result_name, comp);
+            return FileInfo(result_name, file_info.true_size, file_info.file_size);
+        });
         timer.next("Sorting complete");
         timer.stop();
-        return result_list;
+        return {results.begin(), results.end()};
     }
 };
 
