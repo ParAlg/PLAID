@@ -40,7 +40,7 @@ private:
     static std::vector<T> GetPivots(const std::vector<FileInfo> &file_list, size_t num_pivots) {
         // num_pivots is assumed to be < 1024, so parallelism shouldn't be necessary
         size_t total_size = 0;
-        for (const auto &info : file_list) {
+        for (const auto &info: file_list) {
             total_size += info.true_size;
         }
         // n is the number of elements in all files
@@ -53,10 +53,11 @@ private:
         size_t oversample_size = std::min(n, num_pivots * num_pivots + 2 * num_pivots);
         parlay::random_generator generator;
         std::uniform_int_distribution<size_t> dis(0, n - 1);
-        auto samples = parlay::sort(RandomBatchRead<T>(file_list, parlay::map(parlay::iota(oversample_size), [&](size_t i) {
-            auto gen = generator[i];
-            return dis(gen);
-        })));
+        auto samples = parlay::sort(
+            RandomBatchRead<T>(file_list, parlay::map(parlay::iota(oversample_size), [&](size_t i) {
+                auto gen = generator[i];
+                return dis(gen);
+            })));
         std::vector<T> result;
         size_t remaining_pivots = num_pivots;
         size_t i = 0;
@@ -107,7 +108,7 @@ private:
         for (size_t i = 0; i < num_buckets; i++) {
 //            // may need posix_memalign since writev under O_DIRECT expects pointers to be aligned as well
 //            posix_memalign((void**)&buckets[i], O_DIRECT_MULTIPLE, buffer_size * sizeof(T));
-            buckets[i] = (T*)bucket_allocator::alloc();
+            buckets[i] = (T *) bucket_allocator::alloc();
             buffer_index[i] = 0;
         }
         while (true) {
@@ -126,7 +127,7 @@ private:
                 if (buffer_index[bucket_index] == buffer_size) {
                     buffer_index[bucket_index] = 0;
                     intermediate_writer.Write(bucket_index, buckets[bucket_index], buffer_size);
-                    buckets[bucket_index] = (T*)bucket_allocator::alloc();
+                    buckets[bucket_index] = (T *) bucket_allocator::alloc();
                 }
             }
             free(data);
@@ -135,7 +136,7 @@ private:
         for (size_t i = 0; i < num_buckets; i++) {
             // if bucket is empty, free and do nothing else; otherwise send to writer
             if (buffer_index[i] == 0) {
-                bucket_allocator::free((BucketData*)buckets[i]);
+                bucket_allocator::free((BucketData *) buckets[i]);
             } else {
                 intermediate_writer.Write(i, buckets[i], buffer_index[i]);
             }
@@ -210,11 +211,16 @@ public:
         auto samples = GetPivots(input_files, num_samples);
         const auto sorted_pivots = parlay::sort(samples, comp);
         timer.next("After sampling and before assign to bucket");
-        parlay::parallel_for(0, THREAD_COUNT, [&](int i) {
-            AssignToBucket(sorted_pivots, comp);
-        }, 1);
-        // retrieve buckets from intermediate_writer
-        auto bucket_list = intermediate_writer.ReapResult();
+        std::vector<FileInfo> bucket_list;
+        parlay::par_do([&]() {
+            intermediate_writer.RunIOThread(&intermediate_writer);
+        }, [&]() {
+            parlay::parallel_for(0, THREAD_COUNT, [&](int i) {
+                AssignToBucket(sorted_pivots, comp);
+            }, 1);
+            // retrieve buckets from intermediate_writer
+            bucket_list = intermediate_writer.ReapResult();
+        });
         timer.next("After assign to bucket and before phase 2");
         std::mutex bucket_list_lock;
         std::vector<FileInfo> result_list(num_samples + 1);

@@ -148,8 +148,6 @@ public:
             // construct the result file; file sizes will be filled in later
             result_files.emplace_back(f_name, 0, 0);
         }
-
-        io_thread = std::make_unique<std::thread>(RunIOThread, this);
     }
 
     /**
@@ -174,7 +172,6 @@ public:
         }, 1);
         // no more requests sent to the writer
         pending_requests.Close();
-        io_thread->join();
     }
 
     /**
@@ -224,8 +221,6 @@ private:
     SimpleQueue<IOVectorRequest*> free_requests;
     SimpleQueue<IOVectorRequest*> pending_requests;
 
-    std::unique_ptr<std::thread> io_thread;
-
     size_t io_threshold = 4 << 20;
 
     struct BucketData {
@@ -253,11 +248,7 @@ private:
 
         void Reset() {
             for (size_t i = 0; i < iovec_count - (last_request ? 1 : 0); i++) {
-#ifndef USE_PARLAY_TYPE_ALLOCATOR
-                free(io_vectors[i].iov_base);
-#else
                 BucketAllocator::free(reinterpret_cast<BucketData*>(io_vectors[i].iov_base));
-#endif
             }
             if (last_request) {
                 free(io_vectors[iovec_count - 1].iov_base);
@@ -311,11 +302,7 @@ private:
                 auto [pointer, count] = misaligned_pointers[i];
                 size_t pointer_size = count * sizeof(T);
                 memcpy(write_buffer + buffer_position, pointer, pointer_size);
-#ifndef USE_PARLAY_TYPE_ALLOCATOR
-                free(pointer);
-#else
                 BucketAllocator::free((BucketData*)pointer);
-#endif
                 buffer_position += pointer_size;
             }
             *(uint16_t*)(&write_buffer[target_write_size - METADATA_SIZE]) = (uint16_t)byte_diff;

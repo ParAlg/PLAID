@@ -17,7 +17,7 @@ constexpr size_t SSD_COUNT= 30;
 constexpr size_t SSD_PARALLELISM = SSD_COUNT;
 
 // FIXME: low bucket size results in segfaults
-constexpr size_t SAMPLE_SORT_BUCKET_SIZE = 4 << 16;
+constexpr size_t SAMPLE_SORT_BUCKET_SIZE = 4 << 10;
 
 constexpr size_t IO_VECTOR_SIZE = 1024;
 

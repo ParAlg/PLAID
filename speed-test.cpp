@@ -98,24 +98,24 @@ void OrderedFileWriterTest(int argc, char **argv) {
     const size_t SINGLE_WRITE_SIZE = SAMPLE_SORT_BUCKET_SIZE;
     const size_t NUM_BUCKETS = std::strtol(argv[3], nullptr, 10);
     OrderedFileWriter<Type, SAMPLE_SORT_BUCKET_SIZE> writer(prefix, NUM_BUCKETS, 4 * (1 << 20));
-    const size_t n = SINGLE_WRITE_SIZE / sizeof(Type);
-    LOG(INFO) << "Starting writer loop";
-    parlay::random_generator gen;
-    parlay::parallel_for(0, TOTAL_WRITE_SIZE / SINGLE_WRITE_SIZE, [&](size_t i) {
-        std::uniform_int_distribution<size_t> dis(0, NUM_BUCKETS - 1);
-#ifndef USE_PARLAY_TYPE_ALLOCATOR
-        auto array = reinterpret_cast<Type*>(malloc(SINGLE_WRITE_SIZE));
-#else
-        auto array = reinterpret_cast<Type*>(Allocator::alloc());
-#endif
-        for (Type index = 0; index < (Type) n; index++) {
-            array[index] = index * index - 5 * index - 1;
-        }
-        auto r = gen[i];
-        writer.Write(dis(r), array, n);
+    parlay::par_do([&](){
+        writer.RunIOThread(&writer);
+    }, [&]() {
+        const size_t n = SINGLE_WRITE_SIZE / sizeof(Type);
+        LOG(INFO) << "Starting writer loop";
+        parlay::random_generator gen;
+        parlay::parallel_for(0, TOTAL_WRITE_SIZE / SINGLE_WRITE_SIZE, [&](size_t i) {
+            std::uniform_int_distribution<size_t> dis(0, NUM_BUCKETS - 1);
+            auto array = reinterpret_cast<Type*>(Allocator::alloc());
+            for (Type index = 0; index < (Type) n; index++) {
+                array[index] = index * index - 5 * index - 1;
+            }
+            auto r = gen[i];
+            writer.Write(dis(r), array, n);
+        });
+        writer.CleanUp();
+        LOG(INFO) << "Waiting for completion";
     });
-    writer.CleanUp();
-    LOG(INFO) << "Waiting for completion";
     auto results = writer.ReapResult();
     LOG(INFO) << "Done writing";
 }
