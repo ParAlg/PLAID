@@ -7,6 +7,50 @@
 #include "sorter/sample_sort.h"
 #include "utils/random_number_generator.h"
 
+template <typename NumberType>
+struct DummyIterator {
+    NumberType i, n;
+
+    explicit DummyIterator(NumberType limit) : i(0), n(limit) {}
+    DummyIterator(NumberType limit, NumberType start) : i(start), n(limit) {}
+
+    DummyIterator operator+=(NumberType inc) {
+        i += inc;
+        return *this;
+    }
+
+    DummyIterator operator+(NumberType inc) {
+        return DummyIterator(n, i + inc);
+    }
+
+    DummyIterator& operator++() {
+        i++;
+        return *this;
+    }
+
+    DummyIterator operator++(int) {
+        DummyIterator<NumberType> old = *this;
+        operator++();
+        return old;
+    }
+
+    NumberType operator*() {
+        return i;
+    }
+
+    bool operator==(const DummyIterator<NumberType> &o) {
+        return this->i == o.i && this->n == o.n;
+    }
+
+    NumberType operator-(const DummyIterator<NumberType> &o) {
+        return this->i - o.i;
+    }
+
+    NumberType operator[](NumberType index) {
+        return index;
+    }
+};
+
 template<typename T, typename Iterator>
 parlay::sequence<std::tuple<size_t, T>> CompareSortingResultFile(Iterator start, size_t start_index, const FileInfo &f) {
     start += start_index;
@@ -41,7 +85,7 @@ parlay::sequence<std::tuple<size_t, T>> CompareSortingResultFile(Iterator start,
 template<typename T, typename Iterator>
 void CompareSortingResult(Iterator start, Iterator end, const std::vector<FileInfo> &file_list) {
     // read each file and then compare the content of the file to the result of the in-memory sorting algorithm
-    size_t total_size = std::distance(start, end);
+    size_t total_size = end - start;
     size_t n_files = file_list.size();
     size_t prefix_sum[n_files + 1];
     prefix_sum[0] = 0;
@@ -98,9 +142,8 @@ void nop(void* ptr) {}
  *
  * @param prefix The prefix of the names of the resulting files
  * @param n Number of items to be generated
- * @return A pointer to the resulting numbers
  */
-std::shared_ptr<size_t> GenerateSmallSample(const std::string &prefix, size_t n) {
+void GenerateSmallSample(const std::string &prefix, size_t n) {
     auto nums = (size_t *) malloc(n * sizeof(size_t));
     {
         auto perm = parlay::random_permutation(n, parlay::random(std::random_device()()));
@@ -115,19 +158,11 @@ std::shared_ptr<size_t> GenerateSmallSample(const std::string &prefix, size_t n)
     }
     writer.Close();
     writer.Wait();
-    parlay::parallel_for(0, n, [&](size_t i) {
-        nums[i] = i;
-    });
-    return {nums, free};
+    free(nums);
 }
 
-std::shared_ptr<size_t> GetDummyArray(size_t n) {
-    std::shared_ptr<size_t> result((size_t *) malloc(n * sizeof(size_t)), free);
-    auto *arr = result.get();
-    parlay::parallel_for(0, n, [&](size_t i) {
-        arr[i] = i;
-    });
-    return result;
+DummyIterator<size_t> GetDummyArray(size_t n) {
+    return DummyIterator<size_t>(n);
 }
 
 /**
@@ -136,11 +171,9 @@ std::shared_ptr<size_t> GetDummyArray(size_t n) {
  */
 void TestSampleSortSmall(size_t n, bool generate) {
     const std::string prefix = "numbers", result_prefix = "result";
-    std::shared_ptr<size_t> nums;
+    DummyIterator<size_t> nums(n);
     if (generate) {
-        nums = GenerateSmallSample(prefix, n);
-    } else {
-        nums = GetDummyArray(n);
+        GenerateSmallSample(prefix, n);
     }
     SampleSort<size_t> sorter;
     // Note that we don't know the number of files in the list. We just know the prefix.
@@ -149,7 +182,7 @@ void TestSampleSortSmall(size_t n, bool generate) {
     LOG(INFO) << "Performing external memory sort.";
     auto result_files = sorter.Sort(file_list, result_prefix, std::less<>());
     LOG(INFO) << "Comparing sorting result.";
-    CompareSortingResult<size_t>(nums.get(), nums.get() + n, result_files);
+    CompareSortingResult<size_t>(nums, nums + n, result_files);
 }
 
 int main(int argc, char **argv) {

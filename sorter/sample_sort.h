@@ -221,6 +221,7 @@ public:
             // retrieve buckets from intermediate_writer
             bucket_list = intermediate_writer.ReapResult();
         });
+        bucket_allocator::finish();
         timer.next("After assign to bucket and before phase 2");
         std::mutex bucket_list_lock;
         std::vector<FileInfo> result_list(num_samples + 1);
