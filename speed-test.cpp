@@ -125,9 +125,14 @@ void InMemorySortingTest(int argc, char **argv) {
     const size_t n = 1UL << std::strtol(argv[2], nullptr, 10);
     parlay::internal::timer timer("sort");
     auto array = parlay::random_permutation(n);
-    timer.next("Permutation done");
-    auto res = parlay::sort(array);
-    timer.next("Sorting done");
+    timer.next("parlay::random_permutation done");
+    {
+        auto res = parlay::sort(array);
+        timer.next("parlay::sort done");
+    }
+    timer.next("Start in-place sorting");
+    parlay::sort_inplace(array);
+    timer.next("parlay::sort_inplace done");
 }
 
 void RandomReadTest(int argc, char **argv) {
