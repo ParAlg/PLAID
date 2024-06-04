@@ -61,7 +61,7 @@ public:
         io_uring_queue_init(RING_DEPTH, &ring, IORING_SETUP_SINGLE_ISSUER);
         bool has_more_requests = true;
         while (has_more_requests || requests_in_ring > 0) {
-            bool reap_required = completions->IsEmptyUnsafe() || requests_in_ring >= RING_DEPTH || !has_more_requests;
+            bool reap_required = requests_in_ring >= RING_DEPTH || !has_more_requests || completions->IsEmptyUnsafe();
             while (requests_in_ring > 0) {
                 io_uring_cqe *cqe;
                 if (reap_required) {
@@ -81,6 +81,7 @@ public:
                 // at least one reap is done at this point; further reaps are optional
                 reap_required = false;
             }
+            bool need_submit = false;
             while(requests_in_ring < RING_DEPTH) {
                 IOVectorRequest *request = pending_requests->Poll();
                 if (request == nullptr) {
@@ -99,8 +100,11 @@ public:
                                      &request->io_vectors[0],
                                      request->iovec_count,
                                      request->offset);
-                SYSCALL(io_uring_submit(&ring));
                 requests_in_ring++;
+                need_submit = true;
+            }
+            if (need_submit) {
+                SYSCALL(io_uring_submit(&ring));
             }
         }
         io_uring_queue_exit(&ring);

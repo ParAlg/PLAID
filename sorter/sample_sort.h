@@ -213,7 +213,9 @@ public:
         timer.next("After sampling and before assign to bucket");
         std::vector<FileInfo> bucket_list;
         parlay::par_do([&]() {
-            intermediate_writer.RunIOThread(&intermediate_writer);
+            parlay::parallel_for(0, 2, [&](size_t i){
+                intermediate_writer.RunIOThread(&intermediate_writer);
+            }, 1);
         }, [&]() {
             parlay::parallel_for(0, THREAD_COUNT, [&](int i) {
                 AssignToBucket(sorted_pivots, comp);
