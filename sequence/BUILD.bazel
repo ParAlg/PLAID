@@ -1,0 +1,10 @@
+cc_library(
+    name = "sequence",
+    srcs = ["sequence.h"],
+    deps = [
+        "//utils:file_info",
+        "@com_google_absl//absl/log",
+        "@parlaylib//parlay:delayed_sequence",
+        "@parlaylib//parlay:primitives",
+    ],
+)
