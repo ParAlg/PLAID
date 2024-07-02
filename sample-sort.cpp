@@ -7,11 +7,12 @@
 #include "sorter/sample_sort.h"
 #include "utils/random_number_generator.h"
 
-template <typename NumberType>
+template<typename NumberType>
 struct DummyIterator {
     NumberType i, n;
 
     explicit DummyIterator(NumberType limit) : i(0), n(limit) {}
+
     DummyIterator(NumberType limit, NumberType start) : i(start), n(limit) {}
 
     DummyIterator operator+=(NumberType inc) {
@@ -23,7 +24,7 @@ struct DummyIterator {
         return DummyIterator(n, i + inc);
     }
 
-    DummyIterator& operator++() {
+    DummyIterator &operator++() {
         i++;
         return *this;
     }
@@ -52,7 +53,8 @@ struct DummyIterator {
 };
 
 template<typename T, typename Iterator>
-parlay::sequence<std::tuple<size_t, T>> CompareSortingResultFile(Iterator start, size_t start_index, const FileInfo &f) {
+parlay::sequence<std::tuple<size_t, T>>
+CompareSortingResultFile(Iterator start, size_t start_index, const FileInfo &f) {
     start += start_index;
     auto current_file = (T *) ReadEntireFile(f.file_name, f.true_size);
     size_t n = f.true_size / sizeof(T);
@@ -97,7 +99,7 @@ void CompareSortingResult(Iterator start, Iterator end, const std::vector<FileIn
         LOG(ERROR) << "Expected " << total_size << " numbers, got " << file_size;
         return;
     }
-    auto mismatches = parlay::flatten(parlay::map(parlay::iota(n_files), [&](size_t i){
+    auto mismatches = parlay::flatten(parlay::map(parlay::iota(n_files), [&](size_t i) {
         return CompareSortingResultFile<T>(start, prefix_sum[i], file_list[i]);
     }, 1));
     if (mismatches.empty()) {
@@ -110,21 +112,40 @@ void CompareSortingResult(Iterator start, Iterator end, const std::vector<FileIn
     }
 }
 
-/**
- * This is a more cluncky testing function. Don't read this.
- */
-void TestSampleSort() {
+template<typename T, typename Comparator>
+void VerifySortingResult(const std::vector<FileInfo> &file_list, size_t expected_size, Comparator comp) {
+    T prev = std::numeric_limits<T>().min();
+    for (const auto &file: file_list) {
+        auto arr = (T *) ReadEntireFile(file.file_name, file.file_size);
+        size_t n = file.true_size / sizeof(T);
+        expected_size -= n;
+        for (size_t i = 0; i < n; i++) {
+            // the current number should be no less than the previous number
+            if (comp(arr[i], prev)) {
+                LOG(ERROR) << "Error at file " << file.file_name << " index " << i << ": "
+                           << prev << " is greater than " << arr[i];
+                return;
+            }
+            prev = arr[i];
+        }
+        free(arr);
+    }
+    if (expected_size != 0) {
+        LOG(ERROR) << "Size mismatch: " << expected_size << " more bytes expected. "
+                   << "Due to wraparound of unsigned integers, this number might be spuriously large.";
+    }
+}
+
+void TestSampleSort(size_t count, bool regenerate) {
     using Type = uint64_t;
     std::string input_prefix = "numbers";
     std::string output_prefix = "sorted_numbers";
-    LOG(INFO) << "Generating random numbers and writing them to disk";
-    auto nums = GenerateUniformRandomNumbers<Type>(input_prefix, 1 << 20);
-    // in memory sorting
-    LOG(INFO) << "Performing in-memory sorting";
-    auto all_nums = parlay::flatten(parlay::map(parlay::iota(nums.size()), [&](size_t i) {
-        return parlay::sequence<Type>(nums[i].first.get(), nums[i].first.get() + nums[i].second);
-    }));
-    parlay::sort_inplace(all_nums, std::less<>());
+    if (regenerate) {
+        LOG(INFO) << "Generating random numbers and writing them to disk";
+        GenerateUniformRandomNumbers<Type>(input_prefix, count);
+    } else {
+        LOG(INFO) << "Skipping RNG";
+    }
     // external memory sorting
     LOG(INFO) << "Performing external memory sorting";
     SampleSort<Type> sorter;
@@ -132,10 +153,10 @@ void TestSampleSort() {
     auto result_files = sorter.Sort(input_files, output_prefix, std::less<>());
 
     LOG(INFO) << "Comparing result";
-    CompareSortingResult<size_t>(all_nums.begin(), all_nums.end(), result_files);
+    VerifySortingResult<Type>(result_files, count, std::less<>());
 }
 
-void nop(void* ptr) {}
+void nop(void *ptr) {}
 
 /**
  * Write some small numbers to disk for testing purposes.
@@ -188,7 +209,7 @@ void TestSampleSortSmall(size_t n, bool generate) {
 int main(int argc, char **argv) {
     if (argc < 3) {
         show_usage:
-        LOG(ERROR) << "Usage: " << argv[0] << " <data size> <true|false>";
+        LOG(ERROR) << "Usage: " << argv[0] << " <data size> <regenerate: true|false> <simple RNG: true|false>";
         return 0;
     }
     size_t n = 1UL << std::strtol(argv[1], nullptr, 10);
@@ -200,6 +221,14 @@ int main(int argc, char **argv) {
     } else {
         goto show_usage;
     }
+    bool simple_rng = true;
+    if (argc > 3 && strcmp(argv[3], "false") == 0) {
+        simple_rng = false;
+    }
     LOG(INFO) << "Testing with size " << n << " and generate: " << regenerate;
-    TestSampleSortSmall(n, regenerate);
+    if (simple_rng) {
+        TestSampleSortSmall(n, regenerate);
+    } else {
+        TestSampleSort(n, regenerate);
+    }
 }
