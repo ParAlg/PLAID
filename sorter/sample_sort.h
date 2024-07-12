@@ -163,7 +163,7 @@ private:
         SYSCALL(write(fd, buffer, file_info.file_size));
         close(fd);
         free(buffer);
-        return {std::move(target_file), file_info.true_size, file_info.file_size};
+        return {target_file, file_info};
     }
 
     /**
@@ -234,7 +234,7 @@ public:
             auto file_info = bucket_list[i];
             auto result_name = GetFileName(result_prefix, i);
             SortBucket(file_info, result_name, comp);
-            return FileInfo(result_name, file_info.true_size, file_info.file_size);
+            return FileInfo(result_name, file_info);
         });
         timer.next("Sorting complete");
         timer.stop();

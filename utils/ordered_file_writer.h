@@ -150,7 +150,7 @@ public:
             new(&buckets[i]) Bucket(f_name);
             buckets[i].request = NewRequest(buckets[i].current_file, 0);
             // construct the result file; file sizes will be filled in later
-            result_files.emplace_back(f_name, 0, 0);
+            result_files.emplace_back(f_name, i, 0, 0);
         }
     }
 

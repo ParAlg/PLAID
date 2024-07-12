@@ -10,13 +10,19 @@
 
 struct FileInfo {
     std::string file_name;
+    size_t file_index = 0;
     size_t true_size = 0;
     size_t file_size = 0;
 
     FileInfo() = default;
 
-    FileInfo(std::string file_name, size_t true_size, size_t file_size) :
-            file_name(std::move(file_name)), true_size(true_size), file_size(file_size) {};
+    FileInfo(std::string file_name, const FileInfo &original) :
+        file_name(std::move(file_name)),
+        file_index(original.file_index), true_size(original.true_size), file_size(original.file_size) {};
+
+    FileInfo(std::string file_name, size_t file_index, size_t true_size, size_t file_size) :
+        file_name(std::move(file_name)),
+        file_index(file_index), true_size(true_size), file_size(file_size) {};
 
 };
 

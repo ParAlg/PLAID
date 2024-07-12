@@ -31,12 +31,17 @@ std::vector<FileInfo> FindFiles(const std::string &prefix, bool parallel) {
         path p("/mnt/ssd" + std::to_string(i));
         for (auto const &dir_entry: directory_iterator{p}) {
             auto path_str = dir_entry.path().string();
-            if (path_str.find("/" + prefix) != std::string::npos) {
+            size_t index = path_str.find("/" + prefix);
+            if (index != std::string::npos) {
                 // true_size is 0 since we don't know it
-                result.emplace_back(path_str, 0, dir_entry.file_size());
+                size_t file_index = std::stol(path_str.substr(index + 1 + prefix.size()));
+                result.emplace_back(path_str, file_index, 0, dir_entry.file_size());
             }
         }
     }
+    std::sort(result.begin(), result.end(), [](const FileInfo& a, const FileInfo& b) {
+        return a.file_index < b.file_index;
+    });
     return result;
 }
 
@@ -56,12 +61,12 @@ void GetFileInfo(std::vector<FileInfo> &info) {
             info[i].file_size = stat_buf.st_size;
         }
         // FIXME: all files should have end-of-file marker?
-        info[i].true_size = info[i].file_size;
-//        if (info[i].true_size == 0 && info[i].file_size > 0) {
-//            unsigned char buffer[O_DIRECT_MULTIPLE];
-//            ReadFileOnce(info[i].file_name, buffer, info[i].file_size - O_DIRECT_MULTIPLE);
-//            info[i].true_size = info[i].file_size - *(uint16_t *) (buffer + O_DIRECT_MULTIPLE - METADATA_SIZE);
-//        }
+        // info[i].true_size = info[i].file_size;
+        if (info[i].true_size == 0 && info[i].file_size > 0) {
+            unsigned char buffer[O_DIRECT_MULTIPLE];
+            ReadFileOnce(info[i].file_name, buffer, info[i].file_size - O_DIRECT_MULTIPLE);
+            info[i].true_size = info[i].file_size - *(uint16_t *) (buffer + O_DIRECT_MULTIPLE - METADATA_SIZE);
+        }
     }, 1);
 }
 
