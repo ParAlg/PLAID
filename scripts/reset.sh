@@ -1,0 +1,1 @@
+rm -f /mnt/ssd*/result* /mnt/ssd*/spfx* /mnt/ssd*/sorted_numbers*
