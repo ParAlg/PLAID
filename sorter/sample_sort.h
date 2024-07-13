@@ -50,7 +50,8 @@ private:
             [[unlikely]]
             LOG(ERROR) << "Sample size is " << num_pivots << " but we only have " << n << " elements";
         }
-        size_t oversample_size = std::min(n, num_pivots * num_pivots + 2 * num_pivots);
+        // too many samples means the buckets are distributed too evenly; this will affect performance later on
+        size_t oversample_size = std::min(n, num_pivots * (size_t)std::sqrt(num_pivots)); // std::min(n, num_pivots * num_pivots + 2 * num_pivots);
         parlay::random_generator generator;
         std::uniform_int_distribution<size_t> dis(0, n - 1);
         auto samples = parlay::sort(

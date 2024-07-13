@@ -12,10 +12,13 @@
 template<typename T>
 class SimpleQueue {
 public:
-    SimpleQueue() = default;
+    explicit SimpleQueue(size_t size_limit = 0) : size_limit(size_limit) {}
 
     void Push(T data) {
-        std::lock_guard<std::mutex> lock(mutex);
+        std::unique_lock<std::mutex> lock(mutex);
+        while (size_limit && queue.size() == size_limit) {
+            writer_cond.wait(lock);
+        }
         queue.push(data);
         reader_cond.notify_one();
     }
@@ -30,6 +33,9 @@ public:
         }
         T ret = queue.front();
         queue.pop();
+        if (size_limit && queue.size() == size_limit - 1) {
+            writer_cond.notify_one();
+        }
         return ret;
     }
 
@@ -43,10 +49,15 @@ public:
         return queue.empty();
     }
 
+    void SetSizeLimit(size_t new_limit) {
+        size_limit = new_limit;
+    }
+
 private:
     std::queue<T> queue;
     std::mutex mutex;
-    std::condition_variable reader_cond;
+    size_t size_limit;
+    std::condition_variable reader_cond, writer_cond;
     bool open = true;
 };
 
