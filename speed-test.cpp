@@ -69,7 +69,6 @@ void ReadOnlyTest(int argc, char **argv) {
               << (expected_size >> 30) << " GiB";
     UnorderedFileReader<size_t> reader;
     reader.PrepFiles(files);
-    reader.SetBufferQueueSize(512);
     // FIXME: allocator is the bottleneck.
     //  jemalloc performs worse than glibc (1/3) while mimalloc is much faster.
     reader.Start(1 << 20, 128, 128, 4);

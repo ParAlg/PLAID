@@ -31,18 +31,17 @@ class UnorderedFileReader {
 public:
     /**
      * Creates the object. Note that you should call PrepFiles and Start to really begin the file reader.
+     *
+     * @param buffer_queue_size Size of the buffer queue.
+     * Larger values may improve performance at the cost of increased memory usage
      */
-    explicit UnorderedFileReader() {
-        buffer_queue_size = 512;
+    explicit UnorderedFileReader(size_t buffer_queue_size = 1024) {
+        buffer_queue.SetSizeLimit(buffer_queue_size);
     }
 
     ~UnorderedFileReader() {
         is_open = false;
         Wait();
-    }
-
-    void SetBufferQueueSize(size_t new_size) {
-        buffer_queue_size = new_size;
     }
 
     void PrepFiles(const std::string& prefix) {
@@ -113,11 +112,9 @@ public:
 private:
     // whether the file reader is actively running
     bool is_open = true;
-    std::atomic<int> active_threads;
+    std::atomic<int> active_threads = 0;
     // list of files to read
     std::vector<FileInfo> files;
-    // size of the buffer queue; larger values may improve performance at the cost of increased memory usage
-    size_t buffer_queue_size;
     // files that are available to tbe reused
     std::vector<FileInfo> available_files;
     // a single worker thread for managing file reading

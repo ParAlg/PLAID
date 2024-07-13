@@ -53,19 +53,21 @@ std::vector<FileInfo> FindFiles(const std::string &prefix, bool parallel) {
  *
  * @param info A list of files
  */
-void GetFileInfo(std::vector<FileInfo> &info) {
+void GetFileInfo(std::vector<FileInfo> &info, bool eof_marker) {
     parlay::parallel_for(0, info.size(), [&](size_t i) {
         if (info[i].file_size == 0) {
             struct stat stat_buf;
             SYSCALL(stat(info[i].file_name.c_str(), &stat_buf));
             info[i].file_size = stat_buf.st_size;
         }
-        // FIXME: all files should have end-of-file marker?
-        // info[i].true_size = info[i].file_size;
-        if (info[i].true_size == 0 && info[i].file_size > 0) {
-            unsigned char buffer[O_DIRECT_MULTIPLE];
-            ReadFileOnce(info[i].file_name, buffer, info[i].file_size - O_DIRECT_MULTIPLE);
-            info[i].true_size = info[i].file_size - *(uint16_t *) (buffer + O_DIRECT_MULTIPLE - METADATA_SIZE);
+        if (eof_marker) {
+            if (info[i].true_size == 0 && info[i].file_size > 0) {
+                unsigned char buffer[O_DIRECT_MULTIPLE];
+                ReadFileOnce(info[i].file_name, buffer, info[i].file_size - O_DIRECT_MULTIPLE);
+                info[i].true_size = info[i].file_size - *(uint16_t *) (buffer + O_DIRECT_MULTIPLE - METADATA_SIZE);
+            }
+        } else {
+            info[i].true_size = info[i].file_size;
         }
     }, 1);
 }

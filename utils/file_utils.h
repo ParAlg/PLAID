@@ -12,7 +12,7 @@
 
 std::vector<FileInfo> FindFiles(const std::string &prefix, bool parallel = false);
 
-void GetFileInfo(std::vector<FileInfo> &info);
+void GetFileInfo(std::vector<FileInfo> &info, bool eof_marker = false);
 
 /**
  * Ensure that a byte offset conforms to disk alignment requirements by rounding down.

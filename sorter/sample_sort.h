@@ -200,8 +200,7 @@ public:
     std::vector<FileInfo> Sort(std::vector<FileInfo> &input_files,
                                const std::string &result_prefix,
                                Comparator comp) {
-        DLOG(INFO) << "Performing sample sort with " << input_files.size() << " files";
-        parlay::internal::timer timer("Sample sort", true);
+        parlay::internal::timer timer("Sample sort internal", true);
         GetFileInfo(input_files);
         reader.PrepFiles(input_files);
         reader.Start();

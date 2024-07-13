@@ -234,7 +234,9 @@ void run_test(int argc, char **argv) {
     std::string input_prefix(argv[2]), output_prefix(argv[3]);
     auto input_files = FindFiles(input_prefix);
     SampleSort<size_t> sorter;
+    parlay::internal::timer timer("Sample sort");
     auto result_files = sorter.Sort(input_files, output_prefix, std::less<>());
+    timer.next("DONE");
 }
 
 void verify_result(int argc, char **argv) {
@@ -246,7 +248,7 @@ void verify_result(int argc, char **argv) {
     size_t n = 1UL << parse_long(argv[4]);
     auto files = FindFiles(prefix);
     CHECK(!files.empty()) << "No file with prefix " << prefix << " found.";
-    GetFileInfo(files);
+    GetFileInfo(files, true);
     if (large_data) {
         VerifySortingResult<size_t>(files, n, std::less<>());
     } else {

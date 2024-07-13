@@ -49,6 +49,9 @@ parlay::sequence<T> RandomBatchRead(const std::vector<FileInfo> &files,
     return parlay::flatten(parlay::map(parlay::iota(THREAD_COUNT), [&](size_t segment) {
         const size_t segment_start = segment_size * segment;
         const size_t segment_end = std::min(segment_size * (segment + 1), requests.size());
+        if (segment_end <= segment_start) {
+            return parlay::sequence<T>();
+        }
 
         const size_t NUM_BUFFERS = 4096 * 4;
         auto *buffers = (ReadRequest *) malloc(sizeof(ReadRequest) * NUM_BUFFERS);
