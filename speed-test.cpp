@@ -97,7 +97,7 @@ void OrderedFileWriterTest(int argc, char **argv) {
     const size_t SINGLE_WRITE_SIZE = SAMPLE_SORT_BUCKET_SIZE;
     const size_t NUM_BUCKETS = std::strtol(argv[3], nullptr, 10);
     OrderedFileWriter<Type, SAMPLE_SORT_BUCKET_SIZE> writer(prefix, NUM_BUCKETS, 4 * (1 << 20));
-    parlay::par_do([&](){
+    parlay::par_do([&]() {
         writer.RunIOThread(&writer);
     }, [&]() {
         const size_t n = SINGLE_WRITE_SIZE / sizeof(Type);
@@ -105,7 +105,7 @@ void OrderedFileWriterTest(int argc, char **argv) {
         parlay::random_generator gen;
         parlay::parallel_for(0, TOTAL_WRITE_SIZE / SINGLE_WRITE_SIZE, [&](size_t i) {
             std::uniform_int_distribution<size_t> dis(0, NUM_BUCKETS - 1);
-            auto array = reinterpret_cast<Type*>(Allocator::alloc());
+            auto array = reinterpret_cast<Type *>(Allocator::alloc());
             for (Type index = 0; index < (Type) n; index++) {
                 array[index] = index * index - 5 * index - 1;
             }
@@ -120,18 +120,24 @@ void OrderedFileWriterTest(int argc, char **argv) {
 }
 
 void InMemorySortingTest(int argc, char **argv) {
+    typedef size_t Type;
     CHECK(argc > 2) << "Expected number of elements to sort";
     const size_t n = 1UL << std::strtol(argv[2], nullptr, 10);
     parlay::internal::timer timer("sort");
-    auto array = parlay::random_permutation(n);
-    timer.next("parlay::random_permutation done");
-    {
-        auto res = parlay::sort(array);
-        timer.next("parlay::sort done");
-    }
+    parlay::sequence<Type> array(n, 0);
+    size_t step = n / THREAD_COUNT;
+    parlay::parallel_for(0, THREAD_COUNT, [&](size_t i) {
+        size_t start = step * i, end = step * (i + 1);
+        std::random_device device;
+        std::mt19937 rng(device());
+        std::uniform_int_distribution<Type> distribution(std::numeric_limits<unsigned long>::min(), std::numeric_limits<unsigned long>::max());
+        for (size_t j = start; j < end; j++) {
+            array[j] = distribution(rng);
+        }
+    }, 1);
     timer.next("Start in-place sorting");
     parlay::sort_inplace(array);
-    timer.next("parlay::sort_inplace done");
+    timer.next("parlay::sort_inplace DONE");
 }
 
 void RandomReadTest(int argc, char **argv) {
@@ -153,7 +159,7 @@ void RandomReadTest(int argc, char **argv) {
     int fd = open(file_name.c_str(), O_WRONLY | O_CREAT | O_DIRECT, 0744);
     size_t bytes_written = 0;
     while (bytes_written < buffer_size) {
-        size_t result = write(fd, (unsigned char *)buffer + bytes_written, buffer_size - bytes_written);
+        size_t result = write(fd, (unsigned char *) buffer + bytes_written, buffer_size - bytes_written);
         SYSCALL(result);
         bytes_written += result;
     }
@@ -163,13 +169,13 @@ void RandomReadTest(int argc, char **argv) {
     timer.next("File setup complete.");
 
     parlay::random_generator gen;
-    std::uniform_int_distribution<size_t> dis(0, n-1);
+    std::uniform_int_distribution<size_t> dis(0, n - 1);
     parlay::sequence<size_t> queries = parlay::map(parlay::iota(m), [&](size_t i) {
         auto g = gen[i];
         return dis(g);
     });
     timer.next("Begin random read");
-    auto result = RandomBatchRead<size_t>({FileInfo(file_name, buffer_size, buffer_size)}, queries);
+    auto result = RandomBatchRead<size_t>({FileInfo(file_name, 0, buffer_size, buffer_size)}, queries);
     timer.next("Random read completed");
     std::sort(result.begin(), result.end());
     auto expected = parlay::sort(queries);
@@ -186,11 +192,11 @@ void RandomReadTest(int argc, char **argv) {
 }
 
 std::map<std::string, std::function<void(int, char **)>> test_functions = {
-    {"unordered_io", UnorderedIOTest},
-    {"read_only", ReadOnlyTest},
+    {"unordered_io",   UnorderedIOTest},
+    {"read_only",      ReadOnlyTest},
     {"ordered_writer", OrderedFileWriterTest},
-    {"sorting", InMemorySortingTest},
-    {"rand_read", RandomReadTest}};
+    {"sorting",        InMemorySortingTest},
+    {"rand_read",      RandomReadTest}};
 
 int main(int argc, char **argv) {
     if (argc < 2) {
