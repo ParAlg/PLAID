@@ -14,6 +14,7 @@ for i in {30..40}; do
     "${executable}" "run" "${input_prefix}" "${output_prefix}" > "temp.txt"
     grep "DONE" "temp.txt" | sed -e "s/^.*DONE: \([0-9.]\+\)$/\1,/" | tr -d '\n' >> "result.txt"
   done
+  echo "" >> "result.txt"
 done
 rm "temp.txt"
 cat "result.txt"

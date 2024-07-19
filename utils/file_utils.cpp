@@ -83,7 +83,7 @@ void PopulateSSDList(size_t count, bool random) {
     if (random) {
         std::random_device rd;
         std::mt19937 rng(rd());
-        std::uniform_int_distribution<size_t> distribution(0, SSD_COUNT);
+        std::uniform_int_distribution<size_t> distribution(0, SSD_COUNT - 1);
         while (chosen.size() < count) {
             chosen.insert(distribution(rng));
         }
