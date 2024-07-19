@@ -107,3 +107,15 @@ cc_library(
         "@parlaylib//parlay:sequence",
     ],
 )
+
+cc_library(
+    name = "command_line",
+    srcs = ["command_line.cpp"],
+    hdrs = ["command_line.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":file_utils",
+        "//:config",
+        "@com_google_absl//absl/log",
+    ],
+)

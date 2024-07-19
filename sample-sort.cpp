@@ -6,6 +6,7 @@
 
 #include "sorter/sample_sort.h"
 #include "utils/random_number_generator.h"
+#include "utils/command_line.h"
 
 template<typename NumberType>
 struct DummyIterator {
@@ -258,6 +259,7 @@ void verify_result(int argc, char **argv) {
 }
 
 int main(int argc, char **argv) {
+    ParseGlobalArguments(argc, argv);
     if (argc < 2) {
         show_usage:
         LOG(ERROR) << "Usage: " << argv[0] << " <gen|run|verify> <command-specific options";

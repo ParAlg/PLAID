@@ -5,6 +5,8 @@
 #include <filesystem>
 #include <sys/stat.h>
 #include <fcntl.h>
+#include <set>
+#include <random>
 
 #include "parlay/parallel.h"
 
@@ -39,7 +41,7 @@ std::vector<FileInfo> FindFiles(const std::string &prefix, bool parallel) {
             }
         }
     }
-    std::sort(result.begin(), result.end(), [](const FileInfo& a, const FileInfo& b) {
+    std::sort(result.begin(), result.end(), [](const FileInfo &a, const FileInfo &b) {
         return a.file_index < b.file_index;
     });
     return result;
@@ -72,6 +74,46 @@ void GetFileInfo(std::vector<FileInfo> &info, bool eof_marker) {
     }, 1);
 }
 
+std::vector<std::string> ssd_list;
+
+void PopulateSSDList(size_t count, bool random) {
+    CHECK(count <= SSD_COUNT);
+    CHECK(ssd_list.empty());
+    std::set<size_t> chosen;
+    if (random) {
+        std::random_device rd;
+        std::mt19937 rng(rd());
+        std::uniform_int_distribution<size_t> distribution(0, SSD_COUNT);
+        while (chosen.size() < count) {
+            chosen.insert(distribution(rng));
+        }
+    } else {
+        for (size_t i = 0; i < count; i++) {
+            chosen.insert(i);
+        }
+    }
+    std::vector<int> ssd_numbers(chosen.begin(), chosen.end());
+    PopulateSSDList(ssd_numbers);
+}
+
+void PopulateSSDList(const std::vector<int> &ssd_numbers) {
+    CHECK(!ssd_numbers.empty());
+    std::string num_string;
+    for (int num : ssd_numbers) {
+        num_string += std::to_string(num) + ",";
+    }
+    LOG(INFO) << "SSD numbers: " << num_string;
+    char buffer[1024];
+    for (size_t i: ssd_numbers) {
+        sprintf(buffer, SSD_ROOT.c_str(), i);
+        ssd_list.emplace_back(buffer);
+    }
+    std::ostringstream imploded;
+    std::copy(ssd_list.begin(), ssd_list.end(),
+              std::ostream_iterator<std::string>(imploded, " "));
+    LOG(INFO) << "SSDs used: " << imploded.str();
+}
+
 /**
  * Generate a file name and, in doing so, assign it to a SSD in a round-robin fashion
  *
@@ -80,8 +122,13 @@ void GetFileInfo(std::vector<FileInfo> &info, bool eof_marker) {
  * @return
  */
 std::string GetFileName(const std::string &prefix, size_t file_number) {
-    size_t ssd_number = file_number % SSD_COUNT;
-    return "/mnt/ssd" + std::to_string(ssd_number) + "/" + prefix + std::to_string(file_number);
+    if (ssd_list.empty()) {
+        [[unlikely]]
+        LOG(WARNING) << "Number of SSDs to use is not specified. Defaulting to all of them.";
+        PopulateSSDList(SSD_COUNT, false);
+    }
+    size_t ssd_number = file_number % ssd_list.size();
+    return ssd_list[ssd_number] + "/" + prefix + std::to_string(file_number);
 }
 
 /**

@@ -3,6 +3,7 @@ cc_binary(
     srcs = ["sample-sort.cpp"],
     deps = [
         "//sorter:sample_sort",
+        "//utils:command_line",
         "//utils:random_number_generator",
     ],
 )

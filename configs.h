@@ -6,11 +6,13 @@
 #define SORTING_CONFIGS_H
 
 #include <cstddef>
+#include <string>
 
 constexpr size_t MAIN_MEMORY_SIZE = 400ULL * (1 << 30);
 
 constexpr size_t THREAD_COUNT = 128;
 
+const std::string SSD_ROOT = "/mnt/ssd%lu";
 // number of SSD directories in the file system
 constexpr size_t SSD_COUNT= 30;
 // number of SSDs that can be utilized in parallel; this is different from SSD_COUNT if RAID is used
