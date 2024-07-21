@@ -28,9 +28,10 @@ using std::filesystem::path;
 std::vector<FileInfo> FindFiles(const std::string &prefix, bool parallel) {
     // TODO: if this ever becomes the bottleneck, iterate through all SSDs in parallel
     std::vector<FileInfo> result;
+    const auto ssd_list = GetSSDList();
     // go through every SSD
-    for (size_t i = 0; i < SSD_COUNT; i++) {
-        path p("/mnt/ssd" + std::to_string(i));
+    for (const std::string &ssd_name : ssd_list) {
+        path p(ssd_name);
         for (auto const &dir_entry: directory_iterator{p}) {
             auto path_str = dir_entry.path().string();
             size_t index = path_str.find("/" + prefix);
@@ -195,4 +196,8 @@ void *ReadEntireFile(const std::string &file_name, size_t read_size) {
     ASSERT((size_t) result_size == read_size,
            "Size mismatch for " << file_name << ": " << read_size << " attempted, got " << result_size);
     return buffer;
+}
+
+std::vector<std::string> GetSSDList() {
+    return ssd_list;
 }
