@@ -60,7 +60,7 @@ public:
 
     WriteRequest *Poll() {
         static WriteRequest empty_request({nullptr}, 0);
-        auto *result = wait_queue.Poll(&empty_request);
+        auto [result, _] = wait_queue.Poll(&empty_request);
         return result;
     }
 

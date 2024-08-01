@@ -9,6 +9,12 @@
 #include <mutex>
 #include <condition_variable>
 
+enum class QueueCode {
+    FINISH = 0,
+    TIMEOUT = 1,
+    SUCCESS = 2
+};
+
 template<typename T>
 class SimpleQueue {
 public:
@@ -23,20 +29,26 @@ public:
         reader_cond.notify_one();
     }
 
-    T Poll(T default_result = nullptr) {
+    std::pair<T, QueueCode> Poll(T default_result = nullptr, int timeout = -1) {
         std::unique_lock<std::mutex> lock(mutex);
         while (queue.empty()) {
             if (!open) {
-                return default_result;
+                return {default_result, QueueCode::FINISH};
             }
-            reader_cond.wait(lock);
+            if (timeout == -1) {
+                reader_cond.wait(lock);
+            } else if (timeout == 0) {
+                return {default_result, QueueCode::TIMEOUT};
+            } else {
+                // FIXME: positive timeout not supported
+            }
         }
         T ret = queue.front();
         queue.pop();
         if (size_limit && queue.size() == size_limit - 1) {
             writer_cond.notify_one();
         }
-        return ret;
+        return {ret, QueueCode::SUCCESS};
     }
 
     void Close() {

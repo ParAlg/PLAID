@@ -91,7 +91,7 @@ public:
      */
     std::pair<T*, size_t> Poll() {
         static std::pair<T*, size_t> default_result(nullptr, 0);
-        return buffer_queue.Poll(default_result);
+        return buffer_queue.Poll(default_result).first;
     }
 
     void Close() {

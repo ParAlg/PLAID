@@ -83,9 +83,11 @@ public:
             }
             bool need_submit = false;
             while(requests_in_ring < RING_DEPTH) {
-                IOVectorRequest *request = pending_requests->Poll();
+                auto [request, code] = pending_requests->Poll(nullptr, 0);
                 if (request == nullptr) {
-                    has_more_requests = false;
+                    if (code == QueueCode::FINISH) {
+                        has_more_requests = false;
+                    }
                     break;
                 }
                 io_uring_sqe *sqe = io_uring_get_sqe(&ring);
@@ -111,7 +113,7 @@ public:
     }
 
     inline IOVectorRequest* NewRequest(int fd, size_t offset) {
-        auto *r = free_requests.Poll();
+        auto *r = free_requests.Poll().first;
         r->fd = fd;
         r->offset = offset;
         return r;
