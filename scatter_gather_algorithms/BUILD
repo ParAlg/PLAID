@@ -14,6 +14,17 @@ cc_library(
 )
 
 cc_library(
+    name = "permutation",
+    srcs = ["permutation.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":scatter_gather",
+        "@parlaylib//parlay:primitives",
+        "@parlaylib//parlay/internal:get_time",
+    ],
+)
+
+cc_library(
     name = "scatter_gather",
     srcs = ["scatter_gather.h"],
     deps = [

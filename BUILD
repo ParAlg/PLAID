@@ -2,7 +2,7 @@ cc_binary(
     name = "sample_sort",
     srcs = ["sample-sort.cpp"],
     deps = [
-        "//sorter:sample_sort",
+        "//scatter_gather_algorithms:sample_sort",
         "//utils:command_line",
         "//utils:random_number_generator",
     ],

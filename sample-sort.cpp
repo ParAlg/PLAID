@@ -4,7 +4,7 @@
 
 #include <random>
 
-#include "sorter/sample_sort.h"
+#include "scatter_gather_algorithms/sample_sort.h"
 #include "utils/random_number_generator.h"
 #include "utils/command_line.h"
 

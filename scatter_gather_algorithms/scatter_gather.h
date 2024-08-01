@@ -89,7 +89,7 @@ private:
     }
 
     /**
-     * Sort a file's content in internal memory
+     * Run a file's content in internal memory
      * @tparam Comparator
      * @param file_info
      * @param target_file File to which the result of the sorting algorithm will be written
@@ -117,11 +117,11 @@ private:
 
 public:
 
-    std::vector<FileInfo> Sort(std::vector<FileInfo> &input_files,
-                               const std::string &result_prefix,
-                               size_t num_buckets,
-                               const std::function<size_t(const T&)> assigner,
-                               const std::function<void(T**, size_t)> processor) {
+    std::vector<FileInfo> Run(std::vector<FileInfo> &input_files,
+                              const std::string &result_prefix,
+                              size_t num_buckets,
+                              const std::function<size_t(const T&)> assigner,
+                              const std::function<void(T**, size_t)> processor) {
         parlay::internal::timer timer("Sample sort internal", true);
         reader.PrepFiles(input_files);
         reader.Start();

@@ -105,17 +105,19 @@ public:
         size_t num_samples = GetSampleSize(input_files);
         const auto pivots = parlay::sort(GetPivots(input_files, num_samples), comp);
         ScatterGather<T> scatter_gather;
-        auto results = scatter_gather.Sort(input_files, result_prefix, num_samples + 1,
-                                           [&](const T &t) {
-                                               return std::distance(pivots.begin(),
-                                                                    std::upper_bound(pivots.begin(), pivots.end(),
-                                                                                     t, comp));
-                                           },
-                                           [&](T **buffer, size_t n) {
-                                               T *ptr = *buffer;
-                                               auto seq = parlay::make_slice(ptr, ptr + n);
-                                               parlay::sort_inplace(seq, comp);
-                                           });
+        const auto simple_assigner = [&](const T &t) {
+            return std::distance(pivots.begin(),
+                                 std::upper_bound(pivots.begin(), pivots.end(),
+                                                  t, comp));
+        };
+        const auto simple_processor = [&](T **buffer, size_t n) {
+            T *ptr = *buffer;
+            auto seq = parlay::make_slice(ptr, ptr + n);
+            parlay::sort_inplace(seq, comp);
+        };
+        auto results = scatter_gather.Run(input_files, result_prefix, num_samples + 1,
+                                          simple_assigner,
+                                          simple_processor);
         timer.next("Sorting complete");
         timer.stop();
         return {results.begin(), results.end()};
