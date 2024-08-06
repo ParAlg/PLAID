@@ -126,12 +126,12 @@ private:
                 return index_start;
             }
             index_start = index_start == -1 ? 0 : NextLevel(index_start);
-            index_end = (size_t) index_end == level_one.size() ? level_two.size() - 1 : NextLevel(index_end);
-            index_end++;
-            return std::distance(level_two.begin(),
-                                 std::upper_bound(level_two.begin() + index_start,
-                                                  level_two.begin() + index_end,
-                                                  num, comp));
+            auto iter = level_two.begin() + index_start;
+            while (iter != level_two.end() && comp(*iter, num)) {
+                iter++;
+                index_start++;
+            }
+            return index_start;
         }
     };
 
@@ -144,7 +144,6 @@ public:
         parlay::internal::timer timer("Sample sort internal", true);
         GetFileInfo(input_files);
         size_t num_samples = GetSampleSize(input_files);
-//        num_samples = 16 * (1 << 10);
         const auto pivots = parlay::sort(GetPivots(input_files, num_samples), comp);
         const size_t L1_SIZE = 64 * (1 << 10); // 64kb
         typedef std::function<size_t(const T &)> Assigner;
