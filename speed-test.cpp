@@ -45,13 +45,13 @@ void UnorderedIOTest(int argc, char **argv) {
     reader.PrepFiles(files);
     reader.Start(n, 512, 512, 2);
     for (size_t i = 0; i < TOTAL_WRITE_SIZE / SINGLE_WRITE_SIZE; i++) {
-        auto [ptr, size] = reader.Poll();
+        auto [ptr, size, _, _2] = reader.Poll();
         CHECK(size == n) << "Read size is expected to be the same. Actual size: " << size;
 //        auto result = memcmp(ptr, array.get(), SINGLE_WRITE_SIZE);
 //        CHECK(result == 0) << "Expected two arrays to be the same";
         free(ptr);
     }
-    auto [ptr, size] = reader.Poll();
+    auto [ptr, size, _, _2] = reader.Poll();
     if (ptr != nullptr || size != 0) {
         LOG(ERROR) << "Received more input than expected";
     }
@@ -73,7 +73,7 @@ void ReadOnlyTest(int argc, char **argv) {
     //  jemalloc performs worse than glibc (1/3) while mimalloc is much faster.
     reader.Start(1 << 20, 128, 128, 4);
     while (true) {
-        auto [ptr, size] = reader.Poll();
+        auto [ptr, size, _, _2] = reader.Poll();
         if (ptr == nullptr || size == 0) {
             break;
         }
@@ -126,11 +126,12 @@ void InMemorySortingTest(int argc, char **argv) {
     parlay::internal::timer timer("sort");
     parlay::sequence<Type> array(n, 0);
     size_t step = n / THREAD_COUNT;
+    using Limit = std::numeric_limits<unsigned long>;
     parlay::parallel_for(0, THREAD_COUNT, [&](size_t i) {
         size_t start = step * i, end = step * (i + 1);
         std::random_device device;
         std::mt19937 rng(device());
-        std::uniform_int_distribution<Type> distribution(std::numeric_limits<unsigned long>::min(), std::numeric_limits<unsigned long>::max());
+        std::uniform_int_distribution<Type> distribution(Limit::min(), Limit::max());
         for (size_t j = start; j < end; j++) {
             array[j] = distribution(rng);
         }
@@ -138,6 +139,28 @@ void InMemorySortingTest(int argc, char **argv) {
     timer.next("Start in-place sorting");
     parlay::sort_inplace(array);
     timer.next("parlay::sort_inplace DONE");
+}
+
+void InMemoryPermutationTest(int argc, char **argv) {
+    typedef size_t Type;
+    CHECK(argc > 2) << "Expected number of elements to permute";
+    const size_t n = 1UL << std::strtol(argv[2], nullptr, 10);
+    parlay::internal::timer timer("perm");
+    parlay::sequence<Type> array(n, 0);
+    size_t step = n / THREAD_COUNT;
+    using Limit = std::numeric_limits<unsigned long>;
+    parlay::parallel_for(0, THREAD_COUNT, [&](size_t i) {
+        size_t start = step * i, end = step * (i + 1);
+        std::random_device device;
+        std::mt19937 rng(device());
+        std::uniform_int_distribution<Type> distribution(Limit::min(), Limit::max());
+        for (size_t j = start; j < end; j++) {
+            array[j] = distribution(rng);
+        }
+    }, 1);
+    timer.next("Start permutation");
+    parlay::random_shuffle(array);
+    timer.next("parlay::permutation DONE");
 }
 
 void RandomReadTest(int argc, char **argv) {
@@ -196,7 +219,8 @@ std::map<std::string, std::function<void(int, char **)>> test_functions = {
     {"read_only",      ReadOnlyTest},
     {"ordered_writer", OrderedFileWriterTest},
     {"sorting",        InMemorySortingTest},
-    {"rand_read",      RandomReadTest}};
+    {"rand_read",      RandomReadTest},
+    {"permutation",    InMemoryPermutationTest}};
 
 int main(int argc, char **argv) {
     if (argc < 2) {
