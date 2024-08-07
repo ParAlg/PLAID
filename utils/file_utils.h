@@ -14,6 +14,8 @@ std::vector<FileInfo> FindFiles(const std::string &prefix, bool parallel = false
 
 void GetFileInfo(std::vector<FileInfo> &info, bool eof_marker = false);
 
+void ComputeBeforeSize(std::vector<FileInfo> &files);
+
 /**
  * Ensure that a byte offset conforms to disk alignment requirements by rounding down.
  * For example, 4098 would become 4096 if O_DIRECT_MULTIPLE is set to 4096.

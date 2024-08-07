@@ -146,8 +146,9 @@ public:
         size_t num_samples = GetSampleSize(input_files);
         const auto pivots = parlay::sort(GetPivots(input_files, num_samples), comp);
         const size_t L1_SIZE = 64 * (1 << 10); // 64kb
-        typedef std::function<size_t(const T &)> Assigner;
-        const Assigner simple_assigner = [&](const T &t) {
+        ScatterGather<T> scatter_gather;
+        typedef typename ScatterGather<T>::AssignerFunction Assigner;
+        const Assigner simple_assigner = [&](const T &t, [[maybe_unused]] size_t _) {
             // use upper_bound here since the number of buckets is the number of pivots + 1
             return (size_t) std::distance(pivots.begin(),
                                           std::upper_bound(pivots.begin(), pivots.end(),
@@ -159,7 +160,7 @@ public:
         if (use_tree) {
             tree = TwoLayerTree(pivots, comp, L1_SIZE / 2);
         }
-        const Assigner tree_assigner = [&](const T &t) {
+        const Assigner tree_assigner = [&](const T &t, [[maybe_unused]] size_t _) {
             return tree.Find(t);
         };
         const auto simple_processor = [&](T **buffer, size_t n) {
@@ -167,8 +168,6 @@ public:
             auto seq = parlay::make_slice(ptr, ptr + n);
             parlay::sort_inplace(seq, comp);
         };
-
-        ScatterGather<T> scatter_gather;
         auto results = scatter_gather.Run(input_files, result_prefix, num_samples + 1,
                                           (use_tree ? tree_assigner : simple_assigner),
                                           simple_processor);

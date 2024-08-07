@@ -262,7 +262,7 @@ int main(int argc, char **argv) {
     ParseGlobalArguments(argc, argv);
     if (argc < 2) {
         show_usage:
-        LOG(ERROR) << "Usage: " << argv[0] << " <gen|run|verify> <command-specific options";
+        LOG(ERROR) << "Usage: " << argv[0] << " <gen|run|verify> <command-specific options>";
         return 0;
     }
     std::map<std::string, std::function<void(int, char **)>> commands(

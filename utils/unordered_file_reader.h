@@ -29,6 +29,8 @@
 template<typename T>
 class UnorderedFileReader {
 public:
+    typedef std::tuple<T *, size_t, size_t, size_t> BufferData;
+
     /**
      * Creates the object. Note that you should call PrepFiles and Start to really begin the file reader.
      *
@@ -44,11 +46,11 @@ public:
         Wait();
     }
 
-    void PrepFiles(const std::string& prefix) {
+    void PrepFiles(const std::string &prefix) {
         files = FindFiles(prefix);
     }
 
-    void PrepFiles(const std::vector<FileInfo>& file_list) {
+    void PrepFiles(const std::vector<FileInfo> &file_list) {
         this->files = file_list;
     }
 
@@ -57,15 +59,15 @@ public:
                size_t io_uring_size = IO_URING_BUFFER_SIZE,
                size_t num_io_threads = 1) {
         CHECK(num_io_threads > 0) << "Need at least 1 thread";
-        active_threads = (int)num_io_threads;
+        active_threads = (int) num_io_threads;
         for (size_t i = 0; i < num_io_threads; i++) {
             std::vector<FileInfo> file_list;
             for (size_t j = i; j < files.size(); j += num_io_threads) {
                 file_list.push_back(files[j]);
             }
             worker_threads.push_back(
-                    std::make_unique<std::thread>(RunFileReaderWorker, this, std::move(file_list),
-                                                  array_size, io_uring_size, max_outstanding_requests));
+                std::make_unique<std::thread>(RunFileReaderWorker, this, std::move(file_list),
+                                              array_size, io_uring_size, max_outstanding_requests));
         }
     }
 
@@ -75,8 +77,8 @@ public:
      * @param data
      * @param size
      */
-    void Push(T* data, size_t size) {
-        buffer_queue.Push({data, size});
+    void Push(T *data, size_t size, size_t file_index, size_t data_index) {
+        buffer_queue.Push({data, size, file_index, data_index});
     }
 
     /**
@@ -89,8 +91,8 @@ public:
      * @return pointer to a piece of data and its size if one is available; nullptr and 0 if the reader is closed
      *   and no longer has any data
      */
-    std::pair<T*, size_t> Poll() {
-        static std::pair<T*, size_t> default_result(nullptr, 0);
+    BufferData Poll() {
+        static BufferData default_result(nullptr, 0, 0, 0);
         return buffer_queue.Poll(default_result).first;
     }
 
@@ -102,7 +104,7 @@ public:
      * Block until file reader finishes
      */
     void Wait() {
-        for (auto &t : worker_threads) {
+        for (auto &t: worker_threads) {
             if (t->joinable()) {
                 t->join();
             }
@@ -120,7 +122,7 @@ private:
     // a single worker thread for managing file reading
     std::vector<std::unique_ptr<std::thread>> worker_threads;
     // a buffer queue containing data read from disk
-    SimpleQueue<std::pair<T*, size_t>> buffer_queue;
+    SimpleQueue<BufferData> buffer_queue;
 
     /**
      * A file that is currently being read
@@ -129,10 +131,19 @@ private:
         int fd;
         size_t bytes_completed = 0, bytes_issued = 0;
         size_t file_size;
+        const size_t file_index;
+        // number of elements before the start of this file in the entire sequence of files
+        const size_t before_size;
 
-        OpenedFile(const std::string& name, size_t file_size) : file_size(file_size) {
+        OpenedFile(const std::string &name, size_t file_size,
+                   size_t file_index, size_t before_size)
+            : file_size(file_size), file_index(file_index), before_size(before_size) {
             fd = open(name.c_str(), O_DIRECT | O_RDONLY);
             SYSCALL(fd);
+        }
+
+        explicit OpenedFile(const FileInfo &info)
+            : OpenedFile(info.file_name, info.file_size, info.file_index, info.before_size) {
         }
 
         ~OpenedFile() {
@@ -143,7 +154,7 @@ private:
     struct ReadRequest {
         size_t read_size;
         OpenedFile *file;
-        T* data;
+        T *data;
     };
 
     static void RunFileReaderWorker(UnorderedFileReader *reader,
@@ -154,15 +165,15 @@ private:
         struct io_uring ring;
         SYSCALL(io_uring_queue_init(io_uring_size, &ring, IORING_SETUP_SINGLE_ISSUER));
 
-        std::deque<OpenedFile*> available_files;
-        std::vector<OpenedFile*> completed_files;
-        for (auto & file : all_files) {
-            available_files.push_back(new OpenedFile(file.file_name, file.file_size));
+        std::deque<OpenedFile *> available_files;
+        std::vector<OpenedFile *> completed_files;
+        for (auto &file: all_files) {
+            available_files.push_back(new OpenedFile(file));
         }
 
         size_t outstanding_requests = 0;
-        auto *request_pool = (ReadRequest*)malloc(max_outstanding_requests * sizeof(ReadRequest));
-        std::vector<ReadRequest*> available_requests;
+        auto *request_pool = (ReadRequest *) malloc(max_outstanding_requests * sizeof(ReadRequest));
+        std::vector<ReadRequest *> available_requests;
         available_requests.reserve(max_outstanding_requests);
         for (size_t i = 0; i < max_outstanding_requests; i++) {
             available_requests.push_back(request_pool + i);
@@ -174,14 +185,15 @@ private:
             while (outstanding_requests > 0) {
                 // wait for 0 seconds for the cqe
                 struct io_uring_cqe *cqe;
-                struct __kernel_timespec wait_time{0, 0};
-                int wait_result = io_uring_wait_cqe_timeout(&ring, &cqe, &wait_time);
+                int wait_result = io_uring_peek_cqe(&ring, &cqe);
                 if (wait_result == 0) {
                     // process this cqe
                     SYSCALL(cqe->res);
                     auto *request = (ReadRequest *) io_uring_cqe_get_data(cqe);
                     // add data to buffer queue
-                    reader->Push(request->data, request->read_size / sizeof(T));
+                    reader->Push(request->data, request->read_size / sizeof(T),
+                                 request->file->file_index,
+                                 (request->file->before_size + request->read_size) / sizeof(T));
                     auto *file = request->file;
                     file->bytes_completed += request->read_size;
                     if (file->bytes_completed == file->file_size) {
@@ -205,7 +217,7 @@ private:
                 request->file = file;
                 auto read_size = std::min(read_array_size * sizeof(T), file->file_size - file->bytes_issued);
                 request->read_size = read_size;
-                request->data = (T*)malloc(read_size);
+                request->data = (T *) malloc(read_size);
 
                 // issue a read on an opened file
                 struct io_uring_sqe *sqe;
@@ -233,8 +245,8 @@ private:
 
         free(request_pool);
         CHECK(completed_files.size() == all_files.size())
-            << "Expected all files to be read when reader thread terminates";
-        for (auto &file : completed_files) {
+                    << "Expected all files to be read when reader thread terminates";
+        for (auto &file: completed_files) {
             delete file;
         }
 

@@ -19,6 +19,7 @@
 #include "utils/unordered_file_reader.h"
 #include "utils/ordered_file_writer.h"
 
+
 /**
  * Perform external memory sample sort
  *
@@ -26,6 +27,10 @@
  */
 template<typename T>
 class ScatterGather {
+public:
+    typedef std::function<size_t(const T&, size_t)> AssignerFunction;
+    typedef std::function<void(T**, size_t)> ProcessorFunction;
+
 private:
 
     struct BucketData {
@@ -45,7 +50,7 @@ private:
      * to the writer. It may or may not be written to disk at the writer's discretion.
      * @param comp
      */
-    void AssignToBucket(size_t num_buckets, const std::function<size_t(const T&)> assigner) {
+    void AssignToBucket(size_t num_buckets, const AssignerFunction assigner) {
         // reads from the reader and put result into a thread-local buffer; send to intermediate_writer when buffer is full
         size_t buffer_size = SAMPLE_SORT_BUCKET_SIZE / sizeof(T);
         // each bucket stores a pointer to an array, which will hold temporary values in that bucket
@@ -58,14 +63,14 @@ private:
             buffer_index[i] = 0;
         }
         while (true) {
-            auto [data, size] = reader.Poll();
+            auto [data, size, file_index, data_index] = reader.Poll();
             if (data == nullptr) {
                 break;
             }
             // TODO: sort chunk in memory and then interleave samples with it
             for (size_t i = 0; i < size; i++) {
                 // use binary search to find which bucket it belongs to
-                size_t bucket_index = assigner(data[i]);
+                size_t bucket_index = assigner(data[i], data_index + i);
                 // move data to bucket
                 buckets[bucket_index][buffer_index[bucket_index]++] = data[i];
                 // flush if bucket is full
@@ -97,7 +102,7 @@ private:
      * @return Information of the resulting file
      */
     FileInfo ProcessBucket(const FileInfo &file_info, const std::string &target_file,
-                           const std::function<void(T**, size_t)> processor) {
+                           const ProcessorFunction processor) {
         // use parlay's sorting utility to sort this bucket
         T *buffer = (T *) ReadEntireFile(file_info.file_name, file_info.file_size);
         size_t n = file_info.true_size / sizeof(T);
@@ -120,8 +125,9 @@ public:
     std::vector<FileInfo> Run(std::vector<FileInfo> &input_files,
                               const std::string &result_prefix,
                               size_t num_buckets,
-                              const std::function<size_t(const T&)> assigner,
-                              const std::function<void(T**, size_t)> processor) {
+                              const AssignerFunction assigner,
+                              const ProcessorFunction processor,
+                              size_t intermedia_io_threads = 2) {
         parlay::internal::timer timer("Sample sort internal", true);
         reader.PrepFiles(input_files);
         reader.Start();
@@ -130,7 +136,7 @@ public:
         timer.next("After sampling and before assign to bucket");
         std::vector<FileInfo> bucket_list;
         parlay::par_do([&]() {
-            parlay::parallel_for(0, 2, [&](size_t i){
+            parlay::parallel_for(0, intermedia_io_threads, [&](size_t i){
                 intermediate_writer.RunIOThread(&intermediate_writer);
             }, 1);
         }, [&]() {

@@ -30,7 +30,7 @@ std::vector<FileInfo> FindFiles(const std::string &prefix, bool parallel) {
     std::vector<FileInfo> result;
     const auto ssd_list = GetSSDList();
     // go through every SSD
-    for (const std::string &ssd_name : ssd_list) {
+    for (const std::string &ssd_name: ssd_list) {
         path p(ssd_name);
         for (auto const &dir_entry: directory_iterator{p}) {
             auto path_str = dir_entry.path().string();
@@ -100,7 +100,7 @@ void PopulateSSDList(size_t count, bool random) {
 void PopulateSSDList(const std::vector<int> &ssd_numbers) {
     CHECK(!ssd_numbers.empty());
     std::string num_string;
-    for (int num : ssd_numbers) {
+    for (int num: ssd_numbers) {
         num_string += std::to_string(num) + ",";
     }
     LOG(INFO) << "SSD numbers: " << num_string;
@@ -200,4 +200,12 @@ void *ReadEntireFile(const std::string &file_name, size_t read_size) {
 
 std::vector<std::string> GetSSDList() {
     return ssd_list;
+}
+
+void ComputeBeforeSize(std::vector<FileInfo> &files) {
+    size_t total_size = 0;
+    for (auto &f: files) {
+        f.before_size = total_size;
+        total_size += f.true_size;
+    }
 }

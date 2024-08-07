@@ -9,6 +9,15 @@ cc_binary(
 )
 
 cc_binary(
+    name = "permutation",
+    srcs = ["permutation.cpp"],
+    deps = [
+        "//scatter_gather_algorithms:permutation",
+        "//utils:command_line",
+    ],
+)
+
+cc_binary(
     name = "speed_test",
     srcs = ["speed-test.cpp"],
     deps = [

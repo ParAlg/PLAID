@@ -13,6 +13,8 @@ struct FileInfo {
     size_t file_index = 0;
     size_t true_size = 0;
     size_t file_size = 0;
+    // sum of the size of the files before this file (if this file is a part of a sequence of files)
+    size_t before_size = 0;
 
     FileInfo() = default;
 

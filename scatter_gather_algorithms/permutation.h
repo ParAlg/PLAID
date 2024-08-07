@@ -2,28 +2,17 @@
 // Created by peter on 7/31/24.
 //
 
-#ifndef SORTING_PERMUTATION_H
-#define SORTING_PERMUTATION_H
+#ifndef SCATTER_GATHER_PERMUTATION_H
+#define SCATTER_GATHER_PERMUTATION_H
 
-//
-// Created by peter on 3/18/24.
-//
-
-#ifndef SORTING_SAMPLE_SORT_H
-#define SORTING_SAMPLE_SORT_H
-
-#include <utility>
 #include <vector>
 #include <string>
-#include <functional>
-#include <set>
 
 #include "parlay/primitives.h"
 #include "parlay/internal/get_time.h"
 
 #include "configs.h"
 #include "utils/file_utils.h"
-#include "utils/random_read.h"
 
 #include "scatter_gather.h"
 
@@ -33,7 +22,7 @@
  * @tparam T The type to be sorted
  */
 template<typename T>
-class SampleSort {
+class Permutation {
 private:
 
     /**
@@ -61,31 +50,31 @@ private:
 public:
 
     std::vector<FileInfo> Permute(std::vector<FileInfo> &input_files,
-                               const std::string &result_prefix) {
+                                  const std::string &result_prefix) {
         parlay::internal::timer timer("Sample sort internal", true);
         GetFileInfo(input_files);
+        ComputeBeforeSize(input_files);
         size_t num_buckets = GetBucketSize(input_files);
         ScatterGather<T> scatter_gather;
         parlay::random_generator gen;
-        const auto simple_assigner = [&](const T &t) {
-            // TODO: use thread-local RNG?
-            //  use t as random index, but this assumes that T is a numeric type
+        std::uniform_int_distribution<size_t> dist(0, num_buckets - 1);
+        const auto simple_assigner = [&](const T &t, size_t index) {
+            auto r = gen[index];
+            return dist(r);
         };
         const auto simple_processor = [&](T **buffer, size_t n) {
             T *ptr = *buffer;
-            parlay::sequence seq = parlay::make_slice(ptr, ptr + n);
+            auto seq = parlay::make_slice(ptr, ptr + n);
             parlay::random_shuffle(seq);
         };
         auto results = scatter_gather.Run(input_files, result_prefix, num_buckets + 1,
                                           simple_assigner,
-                                          simple_processor);
+                                          simple_processor,
+                                          4);
         timer.next("Sorting complete");
         timer.stop();
         return {results.begin(), results.end()};
     }
 };
 
-#endif //SORTING_SAMPLE_SORT_H
-
-
-#endif //SORTING_PERMUTATION_H
+#endif //SCATTER_GATHER_PERMUTATION_H
