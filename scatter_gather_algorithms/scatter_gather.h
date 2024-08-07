@@ -120,6 +120,71 @@ private:
     // writer to handle all the buckets created in phase 1 of sample sort
     OrderedFileWriter<T, SAMPLE_SORT_BUCKET_SIZE> intermediate_writer;
 
+    parlay::sequence<FileInfo>
+    PerformPhase2(const std::string &result_prefix, size_t num_buckets, const ProcessorFunction &processor,
+                  const std::vector<FileInfo> &bucket_list) const {
+        const size_t num_files = num_buckets;
+        parlay::sequence<FileInfo> results(num_files, FileInfo("", 0, 0, 0));
+        std::atomic<size_t> current_file = 0, files_read = 0;
+        SimpleQueue<std::pair<size_t, T *>> read_queue, write_queue;
+        std::vector<std::thread> read_workers, write_workers;
+        read_queue.SetSizeLimit(128);
+        write_queue.SetSizeLimit(128);
+        for (size_t worker_thread = 0; worker_thread < 128; worker_thread++) {
+            read_workers.emplace_back([&]() {
+                while (true) {
+                    size_t index = current_file++;
+                    if (index >= num_files) {
+                        return;
+                    }
+                    const FileInfo& file = bucket_list[index];
+                    auto pointer = (T *) ReadEntireFile(file.file_name, file.file_size);
+                    read_queue.Push({index, pointer});
+                    if ((++files_read) == num_files) {
+                        read_queue.Close();
+                    }
+                }
+            });
+            write_workers.emplace_back([&]() {
+                while (true) {
+                    auto [res, code] = write_queue.Poll({0, nullptr});
+                    if (code == QueueCode::FINISH) {
+                        return;
+                    }
+                    auto [index, pointer] = res;
+                    FileInfo file = bucket_list[index];
+                    auto file_name = GetFileName(result_prefix, index);
+                    int fd = open(file_name.c_str(), O_WRONLY | O_DIRECT | O_CREAT, 0744);
+                    SYSCALL(fd);
+                    SYSCALL(write(fd, pointer, file.file_size));
+                    close(fd);
+                    free(pointer);
+                    results[index] = {file_name, bucket_list[index]};
+                }
+            });
+        }
+        parlay::parallel_for(0, THREAD_COUNT, [&](size_t _) {
+            while (true) {
+                auto [res, code] = read_queue.Poll({0, nullptr});
+                if (code == QueueCode::FINISH) {
+                    return;
+                }
+                auto [index, pointer] = res;
+                size_t n = bucket_list[index].true_size / sizeof(T);
+                processor(&pointer, n);
+                write_queue.Push(std::pair(index, pointer));
+            }
+        }, 1);
+        write_queue.Close();
+        for (auto &worker: read_workers) {
+            worker.join();
+        }
+        for (auto &worker: write_workers) {
+            worker.join();
+        }
+        return results;
+    }
+
 public:
 
     std::vector<FileInfo> Run(std::vector<FileInfo> &input_files,
@@ -128,12 +193,12 @@ public:
                               const AssignerFunction assigner,
                               const ProcessorFunction processor,
                               size_t intermedia_io_threads = 2) {
-        parlay::internal::timer timer("Sample sort internal", true);
+        parlay::internal::timer timer("Scatter gather internal", true);
         reader.PrepFiles(input_files);
         reader.Start();
         // FIXME: change this file name to a different one (possibly randomized?)
         intermediate_writer.Initialize("spfx_", num_buckets, 1 << 20);
-        timer.next("After sampling and before assign to bucket");
+        timer.next("Start phase 1 (assign to buckets)");
         std::vector<FileInfo> bucket_list;
         parlay::par_do([&]() {
             parlay::parallel_for(0, intermedia_io_threads, [&](size_t i){
@@ -148,16 +213,8 @@ public:
         });
         bucket_allocator::finish();
         timer.next("After assign to bucket and before phase 2");
-        // FIXME: should allow as much parallelism as internal memory allows; need to calculate memory budget
-        //   also, this can get tricky since using a conditional variable to guard against memory overflow
-        //   may result in suboptimal performance
-        parlay::sequence<FileInfo> results = parlay::map(parlay::iota(bucket_list.size()), [&](size_t i) {
-            auto file_info = bucket_list[i];
-            auto result_name = GetFileName(result_prefix, i);
-            ProcessBucket(file_info, result_name, processor);
-            return FileInfo(result_name, file_info);
-        });
-        timer.next("Sorting complete");
+        parlay::sequence<FileInfo> results = PerformPhase2(result_prefix, num_buckets, processor, bucket_list);
+        timer.next("Scatter gather complete");
         timer.stop();
         return {results.begin(), results.end()};
     }
