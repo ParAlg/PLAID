@@ -200,6 +200,7 @@ private:
             return FileInfo(result_name, file_info);
         });
     }
+
 public:
 
     std::vector<FileInfo> Run(std::vector<FileInfo> &input_files,
@@ -208,12 +209,12 @@ public:
                               const AssignerFunction assigner,
                               const ProcessorFunction processor,
                               size_t intermedia_io_threads = 2) {
-        parlay::internal::timer timer("Sample sort internal", true);
+        parlay::internal::timer timer("Scatter gather internal", true);
         reader.PrepFiles(input_files);
         reader.Start();
         // FIXME: change this file name to a different one (possibly randomized?)
         intermediate_writer.Initialize("spfx_", num_buckets, 1 << 20);
-        timer.next("After sampling and before assign to bucket");
+        timer.next("Start phase 1 (assign to buckets)");
         std::vector<FileInfo> bucket_list;
         CHECK(intermedia_io_threads < parlay::num_workers());
         parlay::par_do([&]() {
@@ -221,7 +222,7 @@ public:
                 intermediate_writer.RunIOThread(&intermediate_writer);
             }, 1);
         }, [&]() {
-            parlay::parallel_for(0, THREAD_COUNT, [&](int i) {
+            parlay::parallel_for(0, parlay::num_workers() - intermedia_io_threads, [&](int i) {
                 AssignToBucket(num_buckets, assigner);
             }, 1);
             // retrieve buckets from intermediate_writer
