@@ -167,6 +167,7 @@ public:
             T *ptr = *buffer;
             auto seq = parlay::make_slice(ptr, ptr + n);
             parlay::sort_inplace(seq, comp);
+            // parlay::internal::seq_sort_inplace(seq, comp, false);
         };
         auto results = scatter_gather.Run(input_files, result_prefix, num_samples + 1,
                                           (use_tree ? tree_assigner : simple_assigner),

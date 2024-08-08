@@ -134,6 +134,8 @@ void VerifySortingResult(const std::vector<FileInfo> &file_list, size_t expected
     if (expected_size != 0) {
         LOG(ERROR) << "Size mismatch: " << expected_size << " more bytes expected. "
                    << "Due to wraparound of unsigned integers, this number might be spuriously large.";
+    } else {
+        LOG(INFO) << "Tests passed.";
     }
 }
 

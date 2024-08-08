@@ -121,10 +121,10 @@ private:
     OrderedFileWriter<T, SAMPLE_SORT_BUCKET_SIZE> intermediate_writer;
 
     parlay::sequence<FileInfo>
-    PerformPhase2(const std::string &result_prefix, size_t num_buckets, const ProcessorFunction &processor,
-                  const std::vector<FileInfo> &bucket_list) const {
+    ImprovedPhase2(const std::string &result_prefix, const ProcessorFunction &processor,
+                  const std::vector<FileInfo> &bucket_list) {
         parlay::internal::timer timer("phase 2 internal");
-        const size_t num_files = num_buckets;
+        const size_t num_files = bucket_list.size();
         parlay::sequence<FileInfo> results(num_files, FileInfo("", 0, 0, 0));
         std::atomic<size_t> current_file = 0, files_read = 0;
         SimpleQueue<std::pair<size_t, T *>> read_queue, write_queue;
@@ -190,6 +190,17 @@ private:
         return results;
     }
 
+    parlay::sequence<FileInfo>
+    SimplePhase2(const std::string &result_prefix, const ProcessorFunction &processor,
+                 const std::vector<FileInfo> &bucket_list) {
+        return parlay::map(parlay::iota(bucket_list.size()), [&](size_t i) {
+            const auto& file_info = bucket_list[i];
+            auto result_name = GetFileName(result_prefix, i);
+            ProcessBucket(file_info, result_name, processor);
+            return FileInfo(result_name, file_info);
+        });
+    }
+
 public:
 
     std::vector<FileInfo> Run(std::vector<FileInfo> &input_files,
@@ -205,6 +216,7 @@ public:
         intermediate_writer.Initialize("spfx_", num_buckets, 1 << 20);
         timer.next("Start phase 1 (assign to buckets)");
         std::vector<FileInfo> bucket_list;
+        CHECK(intermedia_io_threads < parlay::num_workers());
         parlay::par_do([&]() {
             parlay::parallel_for(0, intermedia_io_threads, [&](size_t i){
                 intermediate_writer.RunIOThread(&intermediate_writer);
@@ -218,7 +230,7 @@ public:
         });
         bucket_allocator::finish();
         timer.next("After assign to bucket and before phase 2");
-        parlay::sequence<FileInfo> results = PerformPhase2(result_prefix, num_buckets, processor, bucket_list);
+        parlay::sequence<FileInfo> results = SimplePhase2(result_prefix, processor, bucket_list);
         timer.next("Scatter gather complete");
         timer.stop();
         return {results.begin(), results.end()};
