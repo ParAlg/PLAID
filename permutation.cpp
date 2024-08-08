@@ -39,6 +39,7 @@ void run_test(int argc, char **argv) {
 void verify(int argc, char **argv) {
     std::string prefix(argv[2]);
     size_t expected_size = 1UL << parse_long(argv[3]);
+    expected_size *= sizeof(size_t);
     auto results = FindFiles(prefix);
     GetFileInfo(results, true);
     size_t actual_size = 0;

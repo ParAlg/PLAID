@@ -123,14 +123,15 @@ private:
     parlay::sequence<FileInfo>
     PerformPhase2(const std::string &result_prefix, size_t num_buckets, const ProcessorFunction &processor,
                   const std::vector<FileInfo> &bucket_list) const {
+        parlay::internal::timer timer("phase 2 internal");
         const size_t num_files = num_buckets;
         parlay::sequence<FileInfo> results(num_files, FileInfo("", 0, 0, 0));
         std::atomic<size_t> current_file = 0, files_read = 0;
         SimpleQueue<std::pair<size_t, T *>> read_queue, write_queue;
         std::vector<std::thread> read_workers, write_workers;
-        read_queue.SetSizeLimit(128);
-        write_queue.SetSizeLimit(128);
-        for (size_t worker_thread = 0; worker_thread < 128; worker_thread++) {
+        read_queue.SetSizeLimit(256);
+        write_queue.SetSizeLimit(256);
+        for (size_t worker_thread = 0; worker_thread < 256; worker_thread++) {
             read_workers.emplace_back([&]() {
                 while (true) {
                     size_t index = current_file++;
@@ -163,7 +164,8 @@ private:
                 }
             });
         }
-        parlay::parallel_for(0, THREAD_COUNT, [&](size_t _) {
+        timer.next("Worker threads created");
+        parlay::parallel_for(0, parlay::num_workers(), [&](size_t _) {
             while (true) {
                 auto [res, code] = read_queue.Poll({0, nullptr});
                 if (code == QueueCode::FINISH) {
@@ -176,12 +178,15 @@ private:
             }
         }, 1);
         write_queue.Close();
+        timer.next("All processor functions completed");
         for (auto &worker: read_workers) {
             worker.join();
         }
         for (auto &worker: write_workers) {
             worker.join();
         }
+        timer.next("Workers joined");
+        timer.stop();
         return results;
     }
 
@@ -205,7 +210,7 @@ public:
                 intermediate_writer.RunIOThread(&intermediate_writer);
             }, 1);
         }, [&]() {
-            parlay::parallel_for(0, THREAD_COUNT, [&](int i) {
+            parlay::parallel_for(0, parlay::num_workers() - intermedia_io_threads, [&](int i) {
                 AssignToBucket(num_buckets, assigner);
             }, 1);
             // retrieve buckets from intermediate_writer
