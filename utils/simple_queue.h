@@ -22,14 +22,14 @@ public:
 
     void Push(T data) {
         std::unique_lock<std::mutex> lock(mutex);
-        while (size_limit && queue.size() == size_limit) {
+        while (size_limit && queue.size() >= size_limit) {
             writer_cond.wait(lock);
         }
         queue.push(data);
         reader_cond.notify_one();
     }
 
-    std::pair<T, QueueCode> Poll(T default_result = nullptr, int timeout = -1) {
+    std::pair<T, QueueCode> Poll(T default_result = nullptr, int64_t timeout = -1) {
         std::unique_lock<std::mutex> lock(mutex);
         while (queue.empty()) {
             if (!open) {
@@ -40,12 +40,16 @@ public:
             } else if (timeout == 0) {
                 return {default_result, QueueCode::TIMEOUT};
             } else {
-                // FIXME: positive timeout not supported
+                auto result = reader_cond.wait_for(lock,
+                                                   std::chrono::duration(std::chrono::microseconds(timeout)));
+                if (result == std::cv_status::timeout) {
+                    return {default_result, QueueCode::TIMEOUT};
+                }
             }
         }
         T ret = queue.front();
         queue.pop();
-        if (size_limit && queue.size() == size_limit - 1) {
+        if (size_limit) {
             writer_cond.notify_one();
         }
         return {ret, QueueCode::SUCCESS};
@@ -63,6 +67,13 @@ public:
 
     void SetSizeLimit(size_t new_limit) {
         size_limit = new_limit;
+    }
+
+    void Log(const std::string& message = "Queue size: ") {
+        mutex.lock();
+        size_t size = queue.size();
+        mutex.unlock();
+        LOG(INFO) << message << size;
     }
 
 private:

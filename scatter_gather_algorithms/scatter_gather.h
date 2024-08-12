@@ -28,8 +28,8 @@
 template<typename T>
 class ScatterGather {
 public:
-    typedef std::function<size_t(const T&, size_t)> AssignerFunction;
-    typedef std::function<void(T**, size_t)> ProcessorFunction;
+    typedef std::function<size_t(const T &, size_t)> AssignerFunction;
+    typedef std::function<void(T **, size_t)> ProcessorFunction;
 
 private:
 
@@ -105,6 +105,10 @@ private:
                            const ProcessorFunction processor) {
         // use parlay's sorting utility to sort this bucket
         T *buffer = (T *) ReadEntireFile(file_info.file_name, file_info.file_size);
+//        std::uniform_int_distribution<unsigned int> dis(1, 100000);
+//        std::random_device rd;
+//        auto sleep_time = dis(rd);
+//        usleep(sleep_time);
         size_t n = file_info.true_size / sizeof(T);
         processor(&buffer, n);
         int fd = open(target_file.c_str(), O_WRONLY | O_DIRECT | O_CREAT, 0744);
@@ -122,7 +126,7 @@ private:
 
     parlay::sequence<FileInfo>
     ImprovedPhase2(const std::string &result_prefix, const ProcessorFunction &processor,
-                  const std::vector<FileInfo> &bucket_list) {
+                   const std::vector<FileInfo> &bucket_list) {
         parlay::internal::timer timer("phase 2 internal");
         const size_t num_files = bucket_list.size();
         parlay::sequence<FileInfo> results(num_files, FileInfo("", 0, 0, 0));
@@ -138,10 +142,11 @@ private:
                     if (index >= num_files) {
                         return;
                     }
-                    const FileInfo& file = bucket_list[index];
+                    const FileInfo &file = bucket_list[index];
                     auto pointer = (T *) ReadEntireFile(file.file_name, file.file_size);
                     read_queue.Push({index, pointer});
-                    if ((++files_read) == num_files) {
+                    index = ++files_read;
+                    if (index == num_files) {
                         read_queue.Close();
                     }
                 }
@@ -165,7 +170,7 @@ private:
             });
         }
         timer.next("Worker threads created");
-        parlay::parallel_for(0, parlay::num_workers(), [&](size_t _) {
+        parlay::parallel_for(0, parlay::num_workers() - 4, [&](size_t _) {
             while (true) {
                 auto [res, code] = read_queue.Poll({0, nullptr});
                 if (code == QueueCode::FINISH) {
@@ -194,7 +199,7 @@ private:
     SimplePhase2(const std::string &result_prefix, const ProcessorFunction &processor,
                  const std::vector<FileInfo> &bucket_list) {
         return parlay::map(parlay::iota(bucket_list.size()), [&](size_t i) {
-            const auto& file_info = bucket_list[i];
+            const auto &file_info = bucket_list[i];
             auto result_name = GetFileName(result_prefix, i);
             ProcessBucket(file_info, result_name, processor);
             return FileInfo(result_name, file_info);
@@ -218,7 +223,7 @@ public:
         std::vector<FileInfo> bucket_list;
         CHECK(intermedia_io_threads < parlay::num_workers());
         parlay::par_do([&]() {
-            parlay::parallel_for(0, intermedia_io_threads, [&](size_t i){
+            parlay::parallel_for(0, intermedia_io_threads, [&](size_t i) {
                 intermediate_writer.RunIOThread(&intermediate_writer);
             }, 1);
         }, [&]() {
@@ -230,7 +235,7 @@ public:
         });
         bucket_allocator::finish();
         timer.next("After assign to bucket and before phase 2");
-        parlay::sequence<FileInfo> results = SimplePhase2(result_prefix, processor, bucket_list);
+        parlay::sequence<FileInfo> results = ImprovedPhase2(result_prefix, processor, bucket_list);
         timer.next("Scatter gather complete");
         timer.stop();
         return {results.begin(), results.end()};
