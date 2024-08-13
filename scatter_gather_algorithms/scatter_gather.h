@@ -105,10 +105,6 @@ private:
                            const ProcessorFunction processor) {
         // use parlay's sorting utility to sort this bucket
         T *buffer = (T *) ReadEntireFile(file_info.file_name, file_info.file_size);
-//        std::uniform_int_distribution<unsigned int> dis(1, 100000);
-//        std::random_device rd;
-//        auto sleep_time = dis(rd);
-//        usleep(sleep_time);
         size_t n = file_info.true_size / sizeof(T);
         processor(&buffer, n);
         int fd = open(target_file.c_str(), O_WRONLY | O_DIRECT | O_CREAT, 0744);
@@ -125,8 +121,8 @@ private:
     OrderedFileWriter<T, SAMPLE_SORT_BUCKET_SIZE> intermediate_writer;
 
     parlay::sequence<FileInfo>
-    ImprovedPhase2(const std::string &result_prefix, const ProcessorFunction &processor,
-                   const std::vector<FileInfo> &bucket_list) {
+    QueuePhase2(const std::string &result_prefix, const ProcessorFunction &processor,
+                const std::vector<FileInfo> &bucket_list) {
         parlay::internal::timer timer("phase 2 internal");
         const size_t num_files = bucket_list.size();
         parlay::sequence<FileInfo> results(num_files, FileInfo("", 0, 0, 0));
@@ -196,6 +192,102 @@ private:
     }
 
     parlay::sequence<FileInfo>
+    WorkerOnlyPhase2(const std::string &result_prefix, const ProcessorFunction &processor,
+                     const std::vector<FileInfo> &bucket_list) {
+        struct LocalFile {
+            int fd;
+            T *buffer;
+            FileInfo info;
+        };
+        std::atomic<size_t> current_file = 0;
+        size_t num_files = bucket_list.size();
+        parlay::sequence<FileInfo> results(num_files, FileInfo("", 0, 0, 0));
+        parlay::parallel_for(0, parlay::num_workers(), [&](size_t worker_id) {
+            auto sleep_time = 5000 * parlay::worker_id();
+            usleep(sleep_time);
+            struct io_uring read_ring, write_ring;
+            io_uring_queue_init(4, &read_ring, IORING_SETUP_SINGLE_ISSUER);
+            io_uring_queue_init(4, &write_ring, IORING_SETUP_SINGLE_ISSUER);
+            LocalFile previous, current, next;
+            bool need_reap_read = false,
+                need_submit_read = true,
+                need_process = false,
+                need_reap_write = false,
+                need_submit_write = false;
+            while (need_submit_read || need_reap_write) {
+                previous = current;
+                current = next;
+                // reap read
+                if (need_reap_read) {
+                    struct io_uring_cqe *cqe;
+                    SYSCALL(io_uring_wait_cqe(&read_ring, &cqe));
+                    SYSCALL(cqe->res);
+                    io_uring_cqe_seen(&read_ring, cqe);
+                    close(current.fd);
+                    need_process = true;
+                } else {
+                    need_process = false;
+                }
+                // submit read
+                size_t index = current_file++;
+                if (index >= num_files) {
+                    need_submit_read = false;
+                }
+                if (need_submit_read) {
+                    const auto &file_info = bucket_list[index];
+                    next.fd = open(file_info.file_name.c_str(), O_RDONLY | O_DIRECT);
+                    SYSCALL(next.fd);
+                    next.buffer = (T *) malloc(file_info.file_size);
+                    next.info = file_info;
+                    next.info.file_index = index;
+                    auto sqe = io_uring_get_sqe(&read_ring);
+                    io_uring_prep_read(sqe, next.fd, next.buffer, file_info.file_size, 0);
+                    io_uring_submit(&read_ring);
+                    need_reap_read = true;
+                } else {
+                    need_reap_read = false;
+                }
+
+                // process
+                if (need_process) {
+                    processor(&current.buffer, current.info.true_size / sizeof(T));
+                    current.info.file_name = GetFileName(result_prefix, current.info.file_index);
+                    int fd = open(current.info.file_name.c_str(),
+                                  O_DIRECT | O_WRONLY | O_CREAT,
+                                  0744);
+                    SYSCALL(fd);
+                    current.fd = fd;
+                    need_submit_write = true;
+                } else {
+                    need_submit_write = false;
+                }
+
+                // reap write
+                if (need_reap_write) {
+                    struct io_uring_cqe *cqe;
+                    SYSCALL(io_uring_wait_cqe(&write_ring, &cqe));
+                    SYSCALL(cqe->res);
+                    io_uring_cqe_seen(&write_ring, cqe);
+                    SYSCALL(close(previous.fd));
+                    free(previous.buffer);
+                    results[previous.info.file_index] = previous.info;
+                }
+
+                // submit write
+                if (need_submit_write) {
+                    auto sqe = io_uring_get_sqe(&write_ring);
+                    io_uring_prep_write(sqe, current.fd, current.buffer, current.info.file_size, 0);
+                    io_uring_submit(&write_ring);
+                    need_reap_write = true;
+                } else {
+                    need_reap_write = false;
+                }
+            }
+        }, 1);
+        return results;
+    }
+
+    parlay::sequence<FileInfo>
     SimplePhase2(const std::string &result_prefix, const ProcessorFunction &processor,
                  const std::vector<FileInfo> &bucket_list) {
         return parlay::map(parlay::iota(bucket_list.size()), [&](size_t i) {
@@ -235,7 +327,7 @@ public:
         });
         bucket_allocator::finish();
         timer.next("After assign to bucket and before phase 2");
-        parlay::sequence<FileInfo> results = ImprovedPhase2(result_prefix, processor, bucket_list);
+        parlay::sequence<FileInfo> results = WorkerOnlyPhase2(result_prefix, processor, bucket_list);
         timer.next("Scatter gather complete");
         timer.stop();
         return {results.begin(), results.end()};
