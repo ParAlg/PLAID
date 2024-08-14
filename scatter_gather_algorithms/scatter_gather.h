@@ -199,6 +199,7 @@ private:
             T *buffer;
             FileInfo info;
         };
+        constexpr size_t num_pieces = 8;
         std::atomic<size_t> current_file = 0;
         size_t num_files = bucket_list.size();
         parlay::sequence<FileInfo> results(num_files, FileInfo("", 0, 0, 0));
@@ -206,8 +207,8 @@ private:
             auto sleep_time = 5000 * parlay::worker_id();
             usleep(sleep_time);
             struct io_uring read_ring, write_ring;
-            io_uring_queue_init(4, &read_ring, IORING_SETUP_SINGLE_ISSUER);
-            io_uring_queue_init(4, &write_ring, IORING_SETUP_SINGLE_ISSUER);
+            io_uring_queue_init(num_pieces, &read_ring, IORING_SETUP_SINGLE_ISSUER);
+            io_uring_queue_init(num_pieces, &write_ring, IORING_SETUP_SINGLE_ISSUER);
             LocalFile previous, current, next;
             bool need_reap_read = false,
                 need_submit_read = true,
@@ -219,10 +220,14 @@ private:
                 current = next;
                 // reap read
                 if (need_reap_read) {
+                    size_t pieces_reaped = 0;
                     struct io_uring_cqe *cqe;
-                    SYSCALL(io_uring_wait_cqe(&read_ring, &cqe));
-                    SYSCALL(cqe->res);
-                    io_uring_cqe_seen(&read_ring, cqe);
+                    while (pieces_reaped < num_pieces) {
+                        SYSCALL(io_uring_wait_cqe(&read_ring, &cqe));
+                        SYSCALL(cqe->res);
+                        io_uring_cqe_seen(&read_ring, cqe);
+                        pieces_reaped++;
+                    }
                     close(current.fd);
                     need_process = true;
                 } else {
@@ -240,8 +245,17 @@ private:
                     next.buffer = (T *) malloc(file_info.file_size);
                     next.info = file_info;
                     next.info.file_index = index;
-                    auto sqe = io_uring_get_sqe(&read_ring);
-                    io_uring_prep_read(sqe, next.fd, next.buffer, file_info.file_size, 0);
+                    size_t remaining_pieces = num_pieces, offset = 0;
+                    while(remaining_pieces > 0) {
+                        auto sqe = io_uring_get_sqe(&read_ring);
+                        SYSCALL((ptrdiff_t)sqe);
+                        size_t remaining_size = file_info.file_size - offset;
+                        size_t read_size = remaining_size / O_DIRECT_MULTIPLE / remaining_pieces * O_DIRECT_MULTIPLE;
+                        void *buffer = ((char*)next.buffer) + offset;
+                        io_uring_prep_read(sqe, next.fd, buffer, read_size, offset);
+                        remaining_pieces--;
+                        offset += read_size;
+                    }
                     io_uring_submit(&read_ring);
                     need_reap_read = true;
                 } else {
@@ -264,10 +278,14 @@ private:
 
                 // reap write
                 if (need_reap_write) {
+                    size_t pieces_reaped = 0;
                     struct io_uring_cqe *cqe;
-                    SYSCALL(io_uring_wait_cqe(&write_ring, &cqe));
-                    SYSCALL(cqe->res);
-                    io_uring_cqe_seen(&write_ring, cqe);
+                    while (pieces_reaped < num_pieces) {
+                        SYSCALL(io_uring_wait_cqe(&write_ring, &cqe));
+                        SYSCALL(cqe->res);
+                        io_uring_cqe_seen(&write_ring, cqe);
+                        pieces_reaped++;
+                    }
                     SYSCALL(close(previous.fd));
                     free(previous.buffer);
                     results[previous.info.file_index] = previous.info;
@@ -275,8 +293,17 @@ private:
 
                 // submit write
                 if (need_submit_write) {
-                    auto sqe = io_uring_get_sqe(&write_ring);
-                    io_uring_prep_write(sqe, current.fd, current.buffer, current.info.file_size, 0);
+                    size_t remaining_pieces = num_pieces, offset = 0;
+                    while(remaining_pieces > 0) {
+                        auto sqe = io_uring_get_sqe(&write_ring);
+                        SYSCALL((ptrdiff_t)sqe);
+                        size_t remaining_size = current.info.file_size - offset;
+                        size_t write_size = remaining_size / O_DIRECT_MULTIPLE / remaining_pieces * O_DIRECT_MULTIPLE;
+                        void *buffer = ((char*)current.buffer) + offset;
+                        io_uring_prep_write(sqe, current.fd, buffer, write_size, offset);
+                        remaining_pieces--;
+                        offset += write_size;
+                    }
                     io_uring_submit(&write_ring);
                     need_reap_write = true;
                 } else {
