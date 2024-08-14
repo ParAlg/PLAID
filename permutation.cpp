@@ -8,22 +8,18 @@
 #include "scatter_gather_algorithms/permutation.h"
 #include "utils/command_line.h"
 
-long parse_long(char *string) {
-    return std::strtol(string, nullptr, 10);
-}
-
 void generate(int argc, char **argv) {
     if (argc < 5) {
         LOG(ERROR) << "Usage: " << argv[0] << " gen <data size (power of 2)> <prefix> <element size (in bytes)>";
         return;
     }
-    size_t n = 1UL << parse_long(argv[2]);
+    size_t n = 1UL << ParseLong(argv[2]);
     std::string prefix(argv[3]);
-    unsigned int element_size = (bool)parse_long(argv[4]);
+    unsigned int element_size = (bool) ParseLong(argv[4]);
     LOG(INFO) << "Generating " << n << " elements of size " << element_size << " with file prefix " << prefix;
 }
 
-void run_test(int argc, char **argv) {
+void RunTest(int argc, char **argv) {
     if (argc < 4) {
         LOG(ERROR) << "Usage: " << argv[0] << " run <input prefix> <output prefix>";
         return;
@@ -38,7 +34,7 @@ void run_test(int argc, char **argv) {
 
 void verify(int argc, char **argv) {
     std::string prefix(argv[2]);
-    size_t expected_size = 1UL << parse_long(argv[3]);
+    size_t expected_size = 1UL << ParseLong(argv[3]);
     expected_size *= sizeof(size_t);
     auto results = FindFiles(prefix);
     GetFileInfo(results, true);
@@ -63,8 +59,8 @@ int main(int argc, char **argv) {
     }
     std::map<std::string, std::function<void(int, char **)>> commands(
         {
-            {"gen", generate},
-            {"run", run_test},
+            {"gen",    generate},
+            {"run",    RunTest},
             {"verify", verify}
         }
     );

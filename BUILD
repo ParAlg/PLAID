@@ -21,6 +21,7 @@ cc_binary(
     name = "speed_test",
     srcs = ["speed-test.cpp"],
     deps = [
+        "//utils:command_line",
         "//utils:io_utils",
         "//utils:logger",
         "//utils:random_read",

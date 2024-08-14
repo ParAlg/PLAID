@@ -12,6 +12,25 @@
 #include "parlay/primitives.h"
 #include "utils/unordered_file_reader.h"
 #include "utils/random_read.h"
+#include "utils/command_line.h"
+
+template<typename T>
+void WriteFiles(const std::string &prefix, size_t n_bytes, size_t single_write_size = 4 * (1UL << 20)) {
+    UnorderedFileWriter<T> writer(prefix, 128, 2);
+    size_t total_write_size = n_bytes;
+    LOG(INFO) << "Preparing data";
+    auto array = std::shared_ptr<T>((T *) malloc(single_write_size), free);
+    for (size_t i = 0; i < single_write_size / sizeof(T); i++) {
+        array.get()[i] = i * i - 5 * i - 1;
+    }
+    LOG(INFO) << "Starting writer loop";
+    for (size_t i = 0; i < total_write_size / single_write_size; i++) {
+        writer.Push(array, single_write_size / sizeof(T));
+    }
+    LOG(INFO) << "Waiting for completion";
+    writer.Wait();
+    LOG(INFO) << "Files written";
+}
 
 void UnorderedIOTest(int argc, char **argv) {
     CHECK(argc > 2) << "Expected an argument on write size";
@@ -20,23 +39,7 @@ void UnorderedIOTest(int argc, char **argv) {
     const size_t TOTAL_WRITE_SIZE = 1UL << std::strtol(argv[2], nullptr, 10);
     const size_t SINGLE_WRITE_SIZE = 4 * (1UL << 20);
     size_t n = SINGLE_WRITE_SIZE / sizeof(Type);
-    std::shared_ptr<Type> array;
-    {
-        UnorderedFileWriter<Type> writer(prefix, 128, 2);
-
-        LOG(INFO) << "Preparing data";
-        array = std::shared_ptr<Type>((Type *) malloc(SINGLE_WRITE_SIZE), free);
-        for (Type i = 0; i < (Type) n; i++) {
-            array.get()[i] = i * i - 5 * i - 1;
-        }
-        LOG(INFO) << "Starting writer loop";
-        for (size_t i = 0; i < TOTAL_WRITE_SIZE / SINGLE_WRITE_SIZE; i++) {
-            writer.Push(array, n);
-        }
-        writer.Close();
-        LOG(INFO) << "Waiting for completion";
-        writer.Wait();
-    }
+    WriteFiles<Type>(prefix, TOTAL_WRITE_SIZE, SINGLE_WRITE_SIZE);
     LOG(INFO) << "Done writing. Now looking for these files.";
 
     auto files = FindFiles(prefix);
@@ -214,20 +217,109 @@ void RandomReadTest(int argc, char **argv) {
     }
 }
 
+void LargeReadTest(int argc, char **argv) {
+    using T = size_t;
+    constexpr auto NUM_IO_VECTORS = 16;
+    struct Buffer {
+        T* buffer;
+        iovec io_vectors[NUM_IO_VECTORS];
+
+        explicit Buffer(size_t size) {
+            buffer = (T*)malloc(size);
+            for (size_t i = 0; i < NUM_IO_VECTORS; i++) {
+                char *ptr = (char*)buffer;
+                io_vectors[i].iov_base = ptr + (size / NUM_IO_VECTORS) * i;
+                io_vectors[i].iov_len = size / NUM_IO_VECTORS;
+            }
+        }
+
+        ~Buffer() {
+            free(buffer);
+        }
+    };
+
+    auto prefix = "test_files";
+    CHECK(argc >= 4);
+    size_t total_size = 1UL << ParseLong(argv[2]);
+    size_t read_size = 1UL << ParseLong(argv[3]);
+    LOG(INFO) << "Total size: " << total_size / (1 << 20) << " MiB";
+    LOG(INFO) << "Read size: " << read_size / (1 << 20) << " MiB";
+    // WriteFiles<size_t>(prefix, total_size);
+    auto files = FindFiles(prefix);
+    CHECK(!files.empty());
+    GetFileInfo(files);
+    std::vector<int> fds;
+    for (auto &file: files) {
+        fds.push_back(open(file.file_name.c_str(), O_RDONLY | O_DIRECT));
+    }
+
+    constexpr size_t MAX_REQUESTS_IN_RING = 128;
+    size_t buffer_size = read_size * MAX_REQUESTS_IN_RING;
+    std::queue<Buffer *> buffers;
+    for (size_t i = 0; i < buffer_size; i += read_size) {
+        auto buffer = new Buffer(read_size);
+        buffers.push(buffer);
+    }
+
+    std::random_device rd;
+    std::mt19937 rng(rd());
+    std::uniform_int_distribution<size_t> file_distribution(0, fds.size() - 1);
+
+    struct io_uring ring;
+    io_uring_queue_init(MAX_REQUESTS_IN_RING, &ring, IORING_SETUP_SINGLE_ISSUER);
+    size_t requests_in_ring = 0;
+    while (true) {
+        while (requests_in_ring < MAX_REQUESTS_IN_RING) {
+            auto sqe = io_uring_get_sqe(&ring);
+            SYSCALL((ptrdiff_t) sqe);
+            size_t file_index = file_distribution(rng);
+            FileInfo file = files[file_index];
+            auto buffer = buffers.front();
+            buffers.pop();
+            std::uniform_int_distribution<size_t> offset_distribution(0, file.file_size / read_size - 1);
+            io_uring_prep_readv(sqe, fds[file_index], buffer->io_vectors, NUM_IO_VECTORS, offset_distribution(rng) * read_size);
+            io_uring_sqe_set_data(sqe, buffer);
+            requests_in_ring++;
+        }
+        io_uring_submit(&ring);
+        while (requests_in_ring > 0) {
+            struct io_uring_cqe *cqe;
+            if (requests_in_ring == MAX_REQUESTS_IN_RING) {
+                SYSCALL(io_uring_wait_cqe(&ring, &cqe));
+            } else {
+                int res = io_uring_peek_cqe(&ring, &cqe);
+                if (res != 0) {
+                    break;
+                }
+            }
+            SYSCALL(cqe->res);
+            requests_in_ring--;
+            io_uring_cqe_seen(&ring, cqe);
+            buffers.push((Buffer*)io_uring_cqe_get_data(cqe));
+        }
+    }
+}
+
 std::map<std::string, std::function<void(int, char **)>> test_functions = {
     {"unordered_io",   UnorderedIOTest},
     {"read_only",      ReadOnlyTest},
     {"ordered_writer", OrderedFileWriterTest},
     {"sorting",        InMemorySortingTest},
     {"rand_read",      RandomReadTest},
-    {"permutation",    InMemoryPermutationTest}};
+    {"permutation",    InMemoryPermutationTest},
+    {"large_read",     LargeReadTest}};
 
 int main(int argc, char **argv) {
+    ParseGlobalArguments(argc, argv);
     if (argc < 2) {
+        usage:
         std::cout << "Usage: " << argv[0] << " " << "<which test to perform> <test-specific arguments>\n";
         return 0;
     }
     std::string test_name(argv[1]);
+    if (test_functions.count(test_name) == 0) {
+        goto usage;
+    }
     std::cout << "Performing " << test_name << "\n";
     test_functions[test_name](argc, argv);
 }

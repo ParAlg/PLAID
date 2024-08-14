@@ -209,18 +209,14 @@ void TestSampleSortSmall(size_t n, bool generate) {
     CompareSortingResult<size_t>(nums, nums + n, result_files);
 }
 
-long parse_long(char *string) {
-    return std::strtol(string, nullptr, 10);
-}
-
 void generate(int argc, char **argv) {
     if (argc < 5) {
         LOG(ERROR) << "Usage: " << argv[0] << " gen <data size (power of 2)> <prefix> <big: 1|0>";
         return;
     }
-    size_t n = 1UL << parse_long(argv[2]);
+    size_t n = 1UL << ParseLong(argv[2]);
     std::string prefix(argv[3]);
-    bool big_sample = (bool)parse_long(argv[4]);
+    bool big_sample = (bool) ParseLong(argv[4]);
     LOG(INFO) << "Generating " << n << " numbers with file prefix " << prefix << ". Big sample: " << big_sample << ".";
     if (big_sample) {
         GenerateUniformRandomNumbers<size_t>(prefix, n);
@@ -229,7 +225,7 @@ void generate(int argc, char **argv) {
     }
 }
 
-void run_test(int argc, char **argv) {
+void RunTest(int argc, char **argv) {
     if (argc < 4) {
         LOG(ERROR) << "Usage: " << argv[0] << " run <input prefix> <output prefix>";
         return;
@@ -247,8 +243,8 @@ void verify_result(int argc, char **argv) {
         LOG(ERROR) << "Usage: " << argv[0] << " verify <file prefix> <large data: 1|0> <data size>";
     }
     std::string prefix(argv[2]);
-    bool large_data = (bool)parse_long(argv[3]);
-    size_t n = 1UL << parse_long(argv[4]);
+    bool large_data = (bool) ParseLong(argv[3]);
+    size_t n = 1UL << ParseLong(argv[4]);
     auto files = FindFiles(prefix);
     CHECK(!files.empty()) << "No file with prefix " << prefix << " found.";
     GetFileInfo(files, true);
@@ -269,8 +265,8 @@ int main(int argc, char **argv) {
     }
     std::map<std::string, std::function<void(int, char **)>> commands(
         {
-            {"gen", generate},
-            {"run", run_test},
+            {"gen",    generate},
+            {"run",    RunTest},
             {"verify", verify_result}
         }
     );

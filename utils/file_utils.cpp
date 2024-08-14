@@ -199,6 +199,7 @@ void *ReadEntireFile(const std::string &file_name, size_t read_size) {
 }
 
 std::vector<std::string> GetSSDList() {
+    CHECK(!ssd_list.empty()) << "Did you forget to parse global arguments?";
     return ssd_list;
 }
 

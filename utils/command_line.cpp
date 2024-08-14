@@ -2,9 +2,9 @@
 // Created by peter on 7/18/24.
 //
 
-#include "command_line.h"
+#include "utils/command_line.h"
 #include "configs.h"
-#include "file_utils.h"
+#include "utils/file_utils.h"
 
 #include <string>
 #include <map>
@@ -64,4 +64,8 @@ void ParseGlobalArguments(int &argc, char **argv) {
         copy_to++;
     }
     argc = copy_to;
+}
+
+long ParseLong(char *string) {
+    return strtol(string, nullptr, 10);
 }

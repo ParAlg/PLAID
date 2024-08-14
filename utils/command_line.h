@@ -7,4 +7,6 @@
 
 void ParseGlobalArguments(int &argc, char **argv);
 
+long ParseLong(char *string);
+
 #endif //SORTING_COMMAND_LINE_H
