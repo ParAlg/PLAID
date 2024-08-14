@@ -18,6 +18,17 @@ cc_binary(
 )
 
 cc_binary(
+    name = "sequence",
+    srcs = ["sequence.cpp"],
+    deps = [
+        "//sequence_algorithms:reduce",
+        "//utils:command_line",
+        "//utils:io_utils",
+        "@com_google_absl//absl/log",
+    ],
+)
+
+cc_binary(
     name = "speed_test",
     srcs = ["speed-test.cpp"],
     deps = [

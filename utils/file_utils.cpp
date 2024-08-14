@@ -25,7 +25,7 @@ using std::filesystem::path;
  * @return A list of file information.
  *   Note that we also get the file size as a by-product of iterating through the directory.
  */
-std::vector<FileInfo> FindFiles(const std::string &prefix, bool parallel) {
+[[nodiscard]] std::vector<FileInfo> FindFiles(const std::string &prefix, bool parallel) {
     // TODO: if this ever becomes the bottleneck, iterate through all SSDs in parallel
     std::vector<FileInfo> result;
     const auto ssd_list = GetSSDList();
@@ -191,10 +191,13 @@ void *ReadEntireFile(const std::string &file_name, size_t read_size) {
     void *buffer = malloc(read_size);
     int fd = open(file_name.c_str(), O_RDONLY | O_DIRECT);
     SYSCALL(fd);
-    auto result_size = read(fd, buffer, read_size);
-    SYSCALL(result_size);
-    ASSERT((size_t) result_size == read_size,
-           "Size mismatch for " << file_name << ": " << read_size << " attempted, got " << result_size);
+    // reads cannot exceed 2147479552 bytes on Linux, so we need this loop to perform multiple reads
+    size_t result_size = 0;
+    while (result_size < read_size) {
+        size_t cur_size = read(fd, (char*)buffer + result_size, read_size - result_size);
+        SYSCALL(cur_size);
+        result_size += cur_size;
+    }
     return buffer;
 }
 
