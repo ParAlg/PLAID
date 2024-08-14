@@ -245,7 +245,9 @@ private:
 
         free(request_pool);
         CHECK(completed_files.size() == all_files.size())
-                    << "Expected all files to be read when reader thread terminates";
+                    << "Expected all files to be read when reader thread terminates: "
+                    << all_files.size() << " files total, yet "
+                    << completed_files.size() << " files are completed.";
         for (auto &file: completed_files) {
             delete file;
         }
