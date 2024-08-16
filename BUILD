@@ -21,6 +21,7 @@ cc_binary(
     name = "sequence",
     srcs = ["sequence.cpp"],
     deps = [
+        "//sequence_algorithms:map",
         "//sequence_algorithms:reduce",
         "//utils:command_line",
         "//utils:io_utils",

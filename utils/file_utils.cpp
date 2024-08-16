@@ -56,7 +56,7 @@ using std::filesystem::path;
  *
  * @param info A list of files
  */
-void GetFileInfo(std::vector<FileInfo> &info, bool eof_marker) {
+void GetFileInfo(std::vector<FileInfo> &info, bool eof_marker, bool compute_before_size) {
     parlay::parallel_for(0, info.size(), [&](size_t i) {
         if (info[i].file_size == 0) {
             struct stat stat_buf;
@@ -73,11 +73,14 @@ void GetFileInfo(std::vector<FileInfo> &info, bool eof_marker) {
             info[i].true_size = info[i].file_size;
         }
     }, 1);
+    if (compute_before_size) {
+        ComputeBeforeSize(info);
+    }
 }
 
 std::vector<std::string> ssd_list;
 
-void PopulateSSDList(size_t count, bool random) {
+void PopulateSSDList(size_t count, bool random, bool verbose) {
     CHECK(count <= SSD_COUNT);
     CHECK(ssd_list.empty());
     std::set<size_t> chosen;
@@ -94,16 +97,18 @@ void PopulateSSDList(size_t count, bool random) {
         }
     }
     std::vector<int> ssd_numbers(chosen.begin(), chosen.end());
-    PopulateSSDList(ssd_numbers);
+    PopulateSSDList(ssd_numbers, verbose);
 }
 
-void PopulateSSDList(const std::vector<int> &ssd_numbers) {
+void PopulateSSDList(const std::vector<int> &ssd_numbers, bool verbose) {
     CHECK(!ssd_numbers.empty());
     std::string num_string;
     for (int num: ssd_numbers) {
         num_string += std::to_string(num) + ",";
     }
-    LOG(INFO) << "SSD numbers: " << num_string;
+    if (verbose) {
+        LOG(INFO) << "SSD numbers: " << num_string;
+    }
     char buffer[1024];
     for (size_t i: ssd_numbers) {
         sprintf(buffer, SSD_ROOT.c_str(), i);
@@ -112,7 +117,9 @@ void PopulateSSDList(const std::vector<int> &ssd_numbers) {
     std::ostringstream imploded;
     std::copy(ssd_list.begin(), ssd_list.end(),
               std::ostream_iterator<std::string>(imploded, " "));
-    LOG(INFO) << "SSDs used: " << imploded.str();
+    if (verbose) {
+        LOG(INFO) << "SSDs used: " << imploded.str();
+    }
 }
 
 /**
@@ -126,7 +133,7 @@ std::string GetFileName(const std::string &prefix, size_t file_number) {
     if (ssd_list.empty()) {
         [[unlikely]]
         LOG(WARNING) << "Number of SSDs to use is not specified. Defaulting to all of them.";
-        PopulateSSDList(SSD_COUNT, false);
+        PopulateSSDList(SSD_COUNT, false, false);
     }
     size_t ssd_number = file_number % ssd_list.size();
     return ssd_list[ssd_number] + "/" + prefix + std::to_string(file_number);

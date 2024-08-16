@@ -13,25 +13,38 @@
 
 
 void ParseGlobalArguments(int &argc, char **argv) {
-    int i = 1;
+    int argument_index = 1;
     std::map<std::string, std::string> arguments = {
         {"num_ssd", std::to_string(SSD_COUNT)},
         {"ssd_selection", "s"},
         {"ssd", ""}
     };
 
-    for (; i < argc; i++) {
-        std::string s(argv[i]);
-        auto equal_index = s.find('=');
-        if (equal_index == std::string::npos) {
+    for (; argument_index < argc; argument_index++) {
+        std::string s(argv[argument_index]);
+        if (s.size() < 2 || s[0] != '-') {
             break;
         }
-        std::string arg_name = s.substr(0, equal_index), arg_value = s.substr(equal_index + 1);
-        if (arg_name.substr(0, 2) != "--") {
-            LOG(ERROR) << "Argument " << s << " not recognized";
-            continue;
+        auto equal_index = s.find('=');
+        if (equal_index == std::string::npos) {
+            size_t i = 0;
+            while (i < s.size() && s[i] == '-') {
+                i++;
+            }
+            std::string arg_name = s.substr(i);
+            arguments[arg_name] = "";
+        } else {
+            std::string arg_name = s.substr(0, equal_index), arg_value = s.substr(equal_index + 1);
+            if (arg_name.substr(0, 2) != "--") {
+                LOG(ERROR) << "Argument " << s << " not recognized";
+                continue;
+            }
+            arguments[arg_name.substr(2)] = arg_value;
         }
-        arguments[arg_name.substr(2)] = arg_value;
+    }
+    bool verbose = false;
+    if (!arguments["v"].empty() || !arguments["verbose"].empty()) {
+        verbose = true;
     }
     if (!arguments["ssd"].empty()) {
         int num = 0;
@@ -50,14 +63,14 @@ void ParseGlobalArguments(int &argc, char **argv) {
         if (last) {
             numbers.push_back(num);
         }
-        PopulateSSDList(numbers);
+        PopulateSSDList(numbers, verbose);
     } else {
-        PopulateSSDList(std::atoi(arguments["num_ssd"].c_str()), arguments["ssd_selection"] != "s");
+        PopulateSSDList(std::atoi(arguments["num_ssd"].c_str()), arguments["ssd_selection"] != "s", verbose);
     }
-    if (i == 1) {
+    if (argument_index == 1) {
         return;
     }
-    int copy_from = i, copy_to = 1;
+    int copy_from = argument_index, copy_to = 1;
     while (copy_from < argc) {
         argv[copy_to] = argv[copy_from];
         copy_from++;

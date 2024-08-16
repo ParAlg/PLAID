@@ -12,7 +12,7 @@
 
 std::vector<FileInfo> FindFiles(const std::string &prefix, bool parallel = false);
 
-void GetFileInfo(std::vector<FileInfo> &info, bool eof_marker = false);
+void GetFileInfo(std::vector<FileInfo> &info, bool eof_marker = false, bool compute_before_size = true);
 
 void ComputeBeforeSize(std::vector<FileInfo> &files);
 
@@ -42,8 +42,8 @@ void ReadFileOnce(const std::string &file_name, void *buffer, size_t start, size
 
 void* ReadEntireFile(const std::string &file_name, size_t read_size);
 
-void PopulateSSDList(size_t count, bool random);
-void PopulateSSDList(const std::vector<int> &ssd_numbers);
+void PopulateSSDList(size_t count, bool random, bool verbose);
+void PopulateSSDList(const std::vector<int> &ssd_numbers, bool verbose);
 std::string GetFileName(const std::string &prefix, size_t file_number);
 std::vector<std::string> GetSSDList();
 

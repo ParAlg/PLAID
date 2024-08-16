@@ -152,7 +152,7 @@ private:
     };
 
     struct ReadRequest {
-        size_t read_size;
+        size_t offset, read_size;
         OpenedFile *file;
         T *data;
     };
@@ -193,7 +193,7 @@ private:
                     // add data to buffer queue
                     reader->Push(request->data, request->read_size / sizeof(T),
                                  request->file->file_index,
-                                 (request->file->before_size + request->read_size) / sizeof(T));
+                                 (request->file->before_size + request->offset) / sizeof(T));
                     auto *file = request->file;
                     file->bytes_completed += request->read_size;
                     if (file->bytes_completed == file->file_size) {
@@ -215,6 +215,7 @@ private:
                 auto file = available_files.front();
                 available_files.pop_front();
                 request->file = file;
+                request->offset = file->bytes_issued;
                 auto read_size = std::min(read_array_size * sizeof(T), file->file_size - file->bytes_issued);
                 request->read_size = read_size;
                 request->data = (T *) malloc(read_size);

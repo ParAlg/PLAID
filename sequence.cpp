@@ -9,6 +9,7 @@
 
 #include "absl/log/log.h"
 #include "sequence_algorithms/reduce.h"
+#include "sequence_algorithms/map.h"
 
 parlay::monoid monoid([](size_t a, size_t b) {
     return a ^ b;
@@ -20,6 +21,41 @@ void RunReduce(int argc, char **argv) {
     auto files = FindFiles(prefix);
     auto result = Reduce<size_t>(files, monoid);
     LOG(INFO) << "Result: " << result;
+}
+
+void RunMap(int argc, char **argv) {
+    CHECK(argc >= 4);
+    std::string prefix(argv[2]);
+    std::string result_prefix(argv[3]);
+    auto files = FindFiles(prefix);
+    GetFileInfo(files);
+    Map<size_t, size_t>(files, result_prefix, [](size_t num) { return num / 2; });
+}
+
+void VerifyMap(int argc, char **argv) {
+    CHECK(argc >= 4);
+    using T = size_t;
+    std::string source_prefix(argv[2]), result_prefix(argv[3]);
+    auto source_files = FindFiles(source_prefix);
+    auto result_files = FindFiles(result_prefix);
+    CHECK(source_files.size() == result_files.size());
+    GetFileInfo(source_files);
+    GetFileInfo(result_files);
+    parlay::parallel_for(0, source_files.size(), [&](size_t i) {
+        size_t size = source_files[i].file_size;
+        CHECK(size == result_files[i].file_size) << "Size mismtch for file " << i << ": "
+                                                 << "expected " << size << " actual " << result_files[i].file_size;
+        size_t n = size / sizeof(T);
+        auto p1 = (T *) ReadEntireFile(source_files[i].file_name, source_files[i].file_size);
+        auto p2 = (T *) ReadEntireFile(result_files[i].file_name, result_files[i].file_size);
+        auto expected = parlay::map(parlay::make_slice(p1, p1 + n),
+                                    [](size_t o) { return o / 2; });
+        for (size_t j = 0; j < n; j++) {
+            CHECK(p2[j] == expected[j]) << "For file " << i << " index " << j << ": "
+                                        << "original " << p1[j] << " expected " << expected[j] << " actual " << p2[j];
+        }
+    });
+    LOG(INFO) << "Test passed";
 }
 
 void VerifyReduce(int argc, char **argv) {
@@ -51,7 +87,9 @@ int main(int argc, char **argv) {
     std::map<std::string, std::function<void(int, char **)>> commands(
         {
             {"reduce",        RunReduce},
-            {"verify_reduce", VerifyReduce}
+            {"verify_reduce", VerifyReduce},
+            {"map",           RunMap},
+            {"verify_map",    VerifyMap}
         }
     );
     if (commands.count(argv[1])) {

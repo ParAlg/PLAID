@@ -28,16 +28,19 @@ private:
 public:
     explicit UnorderedFileWriter(const std::string &prefix,
                                  size_t io_uring_size = IO_URING_BUFFER_SIZE,
-                                 size_t num_threads = 1) {
-        // one file per SSD
-        num_files = SSD_COUNT;
+                                 size_t num_threads = 1,
+                                 size_t num_files = SSD_COUNT) : num_files(num_files) {
+        for (size_t i = 0; i < num_files; i++) {
+            auto file = new OpenedFile(GetFileName(prefix, i));
+            global_files.push_back(file);
+        }
         for (size_t t = 0; t < num_threads; t++) {
-            std::vector<std::string> file_list;
+            std::vector<OpenedFile*> file_list;
             for (size_t file_index = t; file_index < num_files; file_index += num_threads) {
-                file_list.push_back(GetFileName(prefix, file_index));
+                file_list.push_back(global_files[file_index]);
             }
             worker_threads.push_back(std::make_unique<std::thread>(
-                    RunFileWriterWorker, this, file_list, io_uring_size));
+                RunFileWriterWorker, this, file_list, io_uring_size));
         }
     }
 
@@ -46,15 +49,15 @@ public:
         DLOG(INFO) << "FileWriter worker thread exited. " << num_files << " files created.";
     }
 
-    void Push(std::shared_ptr<T> data, size_t size) {
+    void Push(std::shared_ptr<T> data, size_t size, size_t file_index = -1, size_t file_offset = -1) {
         // FIXME: need to align writes to 512 byte blocks, otherwise we won't be able to use O_DIRECT
         //   short term solution is to force multiples of 512 and throw an error otherwise;
         //   alternatively, use ftruncate to change the size of the file
         //   long term solution is to store the size of the last section in the end of the file (i.e. last 8 bytes)
         CHECK(size * sizeof(T) % O_DIRECT_MULTIPLE == 0)
-                        << "Size (in bytes) must be aligned to the size of a page in O_DIRECT mode. "
-                        << "Actual size: " << size * sizeof(T);
-        auto request = new WriteRequest(std::move(data), size);
+                    << "Size (in bytes) must be aligned to the size of a page in O_DIRECT mode. "
+                    << "Actual size: " << size * sizeof(T);
+        auto request = new WriteRequest(std::move(data), size, file_index, file_offset);
         wait_queue.Push(request);
     }
 
@@ -86,15 +89,22 @@ private:
     size_t num_files = 0;
     std::vector<std::unique_ptr<std::thread>> worker_threads;
     SimpleQueue<WriteRequest *> wait_queue;
+    std::vector<OpenedFile *> global_files;
 
     struct WriteRequest {
         std::shared_ptr<T> data;
         size_t size;
+        size_t file_index = -1;
+        size_t file_offset = -1;
         OpenedFile *file = nullptr;
 
-        WriteRequest() : data(nullptr), size(0), file(nullptr) {}
+        WriteRequest() : data(nullptr), size(0), file(nullptr), file_index(-1), file_offset(-1) {}
 
         WriteRequest(std::shared_ptr<T> data, size_t size) : data(std::move(data)), size(size) {}
+
+        WriteRequest(std::shared_ptr<T> data, size_t size, size_t file_index, size_t file_offset)
+            : data(std::move(data)), size(size), file_index(file_index), file_offset(file_offset) {}
+
     };
 
     struct OpenedFile {
@@ -119,17 +129,12 @@ private:
     };
 
     static void RunFileWriterWorker(UnorderedFileWriter *writer,
-                                    const std::vector<std::string> output_files,
+                                    const std::vector<OpenedFile*> files,
                                     const size_t io_uring_size) {
         struct io_uring ring;
         SYSCALL(io_uring_queue_init(io_uring_size, &ring, IORING_SETUP_SINGLE_ISSUER));
 
-        std::vector<OpenedFile *> files;
         size_t current_file = 0;
-        for (const auto &file_name: output_files) {
-            files.push_back(new OpenedFile(file_name));
-        }
-
         size_t outstanding_request = 0;
         size_t sqe_unavailable_count = 0;
 
@@ -182,13 +187,23 @@ private:
                         break;
                     }
                 }
-                auto *file = files[current_file];
-                current_file = (current_file + 1) % files.size();
+                OpenedFile *file;
+                if (request->file_index != (size_t)-1) {
+                    CHECK(request->file_index < writer->num_files);
+                    file = writer->global_files[request->file_index];
+                } else {
+                    file = files[current_file];
+                    current_file = (current_file + 1) % files.size();
+                }
                 request->file = file;
 
                 size_t num_bytes = request->size * sizeof(T);
 
-                io_uring_prep_write(sqe, file->fd, request->data.get(), num_bytes, file->bytes_issued);
+                size_t offset = file->bytes_issued;
+                if (request->file_offset != (size_t)-1) {
+                    offset = request->file_offset;
+                }
+                io_uring_prep_write(sqe, file->fd, request->data.get(), num_bytes, offset);
                 file->bytes_issued += num_bytes;
                 io_uring_sqe_set_data(sqe, request);
                 submit_write = true;
