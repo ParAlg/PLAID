@@ -238,14 +238,12 @@ void LargeReadTest(int argc, char **argv) {
         }
     };
 
-    auto prefix = "test_files";
-    CHECK(argc >= 4);
-    size_t total_size = 1UL << ParseLong(argv[2]);
+    CHECK(argc >= 5);
+    std::string prefix(argv[2]);
+    auto files = FindFiles(prefix);
     size_t read_size = 1UL << ParseLong(argv[3]);
-    LOG(INFO) << "Total size: " << total_size / (1 << 20) << " MiB";
     LOG(INFO) << "Read size: " << read_size / (1 << 20) << " MiB";
     // WriteFiles<size_t>(prefix, total_size);
-    auto files = FindFiles(prefix);
     CHECK(!files.empty());
     GetFileInfo(files);
     std::vector<int> fds;
@@ -253,8 +251,8 @@ void LargeReadTest(int argc, char **argv) {
         fds.push_back(open(file.file_name.c_str(), O_RDONLY | O_DIRECT));
     }
 
-    constexpr size_t MAX_REQUESTS_IN_RING = 128;
-    size_t buffer_size = read_size * MAX_REQUESTS_IN_RING;
+    size_t max_requests_in_ring = ParseLong(argv[4]);
+    size_t buffer_size = read_size * max_requests_in_ring;
     std::queue<Buffer *> buffers;
     for (size_t i = 0; i < buffer_size; i += read_size) {
         auto buffer = new Buffer(read_size);
@@ -266,10 +264,10 @@ void LargeReadTest(int argc, char **argv) {
     std::uniform_int_distribution<size_t> file_distribution(0, fds.size() - 1);
 
     struct io_uring ring;
-    io_uring_queue_init(MAX_REQUESTS_IN_RING, &ring, IORING_SETUP_SINGLE_ISSUER);
+    io_uring_queue_init(max_requests_in_ring, &ring, IORING_SETUP_SINGLE_ISSUER);
     size_t requests_in_ring = 0;
     while (true) {
-        while (requests_in_ring < MAX_REQUESTS_IN_RING) {
+        while (requests_in_ring < max_requests_in_ring) {
             auto sqe = io_uring_get_sqe(&ring);
             SYSCALL((ptrdiff_t) sqe);
             size_t file_index = file_distribution(rng);
@@ -284,7 +282,7 @@ void LargeReadTest(int argc, char **argv) {
         io_uring_submit(&ring);
         while (requests_in_ring > 0) {
             struct io_uring_cqe *cqe;
-            if (requests_in_ring == MAX_REQUESTS_IN_RING) {
+            if (requests_in_ring == max_requests_in_ring) {
                 SYSCALL(io_uring_wait_cqe(&ring, &cqe));
             } else {
                 int res = io_uring_peek_cqe(&ring, &cqe);
