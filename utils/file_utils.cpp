@@ -220,3 +220,10 @@ void ComputeBeforeSize(std::vector<FileInfo> &files) {
         total_size += f.true_size;
     }
 }
+
+void MakeFileEndMarker(unsigned char *buffer, size_t size, size_t real_size) {
+    constexpr size_t capacity = 1 << (8 * METADATA_SIZE);
+    size_t byte_diff = size - real_size;
+    CHECK(byte_diff < capacity);
+    *(uint16_t*)(&buffer[size - METADATA_SIZE]) = (uint16_t)byte_diff;
+}

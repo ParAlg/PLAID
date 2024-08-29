@@ -300,8 +300,6 @@ private:
             if (target_write_size - write_size < METADATA_SIZE) {
                 target_write_size += O_DIRECT_MULTIPLE;
             }
-            size_t byte_diff = target_write_size - write_size;
-
             auto *write_buffer = (unsigned char *)malloc(target_write_size);
             size_t buffer_position = 0;
             for (size_t i = 0; i < misaligned_pointers.size(); i++) {
@@ -311,7 +309,7 @@ private:
                 BucketAllocator::free((BucketData*)pointer);
                 buffer_position += pointer_size;
             }
-            *(uint16_t*)(&write_buffer[target_write_size - METADATA_SIZE]) = (uint16_t)byte_diff;
+            MakeFileEndMarker(write_buffer, target_write_size, write_size);
             // compute true file size (excluding garbage bytes and marker at the end) and file size on disk
             return {write_buffer, target_write_size, write_size};
         }

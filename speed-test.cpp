@@ -186,7 +186,7 @@ void InMemoryReduceTest(int argc, char **argv) {
     parlay::internal::timer timer("In memory reduce");
     timer.next("Start reduce");
     parlay::monoid monoid([](T a, T b) { return a ^ b; }, 0);
-    auto result = parlay::reduce(sequence, monoid);
+    [[maybe_unused]] auto result = parlay::reduce(sequence, monoid);
     timer.next("Reduce done");
 }
 

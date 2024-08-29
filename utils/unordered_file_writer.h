@@ -26,16 +26,34 @@ private:
     struct WriteRequest;
     struct OpenedFile;
 public:
+
+    explicit UnorderedFileWriter(const std::vector<std::string> &file_names,
+                                 size_t io_uring_size = IO_URING_BUFFER_SIZE,
+                                 size_t num_threads = 1) {
+        Start(file_names, io_uring_size, num_threads);
+    }
+
     explicit UnorderedFileWriter(const std::string &prefix,
                                  size_t io_uring_size = IO_URING_BUFFER_SIZE,
                                  size_t num_threads = 1,
                                  size_t num_files = SSD_COUNT) : num_files(num_files) {
+        std::vector<std::string> file_names;
         for (size_t i = 0; i < num_files; i++) {
-            auto file = new OpenedFile(GetFileName(prefix, i));
+            file_names.push_back(GetFileName(prefix, i));
+        }
+        Start(file_names, io_uring_size, num_threads);
+    }
+
+    void Start(const std::vector<std::string> &file_names,
+               size_t io_uring_size = IO_URING_BUFFER_SIZE,
+               size_t num_threads = 1) {
+        num_files = file_names.size();
+        for (size_t i = 0; i < num_files; i++) {
+            auto file = new OpenedFile(file_names[i]);
             global_files.push_back(file);
         }
         for (size_t t = 0; t < num_threads; t++) {
-            std::vector<OpenedFile*> file_list;
+            std::vector<OpenedFile *> file_list;
             for (size_t file_index = t; file_index < num_files; file_index += num_threads) {
                 file_list.push_back(global_files[file_index]);
             }
@@ -129,7 +147,7 @@ private:
     };
 
     static void RunFileWriterWorker(UnorderedFileWriter *writer,
-                                    const std::vector<OpenedFile*> files,
+                                    const std::vector<OpenedFile *> files,
                                     const size_t io_uring_size) {
         struct io_uring ring;
         SYSCALL(io_uring_queue_init(io_uring_size, &ring, IORING_SETUP_SINGLE_ISSUER));
@@ -188,7 +206,7 @@ private:
                     }
                 }
                 OpenedFile *file;
-                if (request->file_index != (size_t)-1) {
+                if (request->file_index != (size_t) -1) {
                     CHECK(request->file_index < writer->num_files);
                     file = writer->global_files[request->file_index];
                 } else {
@@ -200,7 +218,7 @@ private:
                 size_t num_bytes = request->size * sizeof(T);
 
                 size_t offset = file->bytes_issued;
-                if (request->file_offset != (size_t)-1) {
+                if (request->file_offset != (size_t) -1) {
                     offset = request->file_offset;
                 }
                 io_uring_prep_write(sqe, file->fd, request->data.get(), num_bytes, offset);
