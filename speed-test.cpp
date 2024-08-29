@@ -166,6 +166,41 @@ void InMemoryPermutationTest(int argc, char **argv) {
     timer.next("parlay::permutation DONE");
 }
 
+template<typename T>
+parlay::sequence<T> RandomSequence(size_t n) {
+    parlay::random_generator rng;
+    std::uniform_int_distribution<T> dist;
+    parlay::sequence<T> sequence(n);
+    parlay::parallel_for(0, n, [&](size_t i) {
+        auto r = rng[i];
+        sequence[i] = dist(r);
+    });
+    return sequence;
+}
+
+void InMemoryReduceTest(int argc, char **argv) {
+    using T = uint64_t;
+    CHECK(argc > 2) << "Expected number of elements to reduce";
+    const size_t n = 1UL << std::strtol(argv[2], nullptr, 10);
+    auto sequence = RandomSequence<T>(n);
+    parlay::internal::timer timer("In memory reduce");
+    timer.next("Start reduce");
+    parlay::monoid monoid([](T a, T b) { return a ^ b; }, 0);
+    auto result = parlay::reduce(sequence, monoid);
+    timer.next("Reduce done");
+}
+
+void InMemoryMapTest(int argc, char **argv) {
+    using T = uint64_t;
+    CHECK(argc > 2) << "Expected number of elements to map";
+    const size_t n = 1UL << std::strtol(argv[2], nullptr, 10);
+    auto sequence = RandomSequence<T>(n);
+    parlay::internal::timer timer("In memory map");
+    timer.next("Start map");
+    auto result = parlay::map(sequence, [](T num) { return num / 2; });
+    timer.next("Map done");
+}
+
 void RandomReadTest(int argc, char **argv) {
     if (argc < 4) {
         std::cout << "Need arguments for number of elements and number of queries\n";
@@ -221,13 +256,13 @@ void LargeReadTest(int argc, char **argv) {
     using T = size_t;
     constexpr auto NUM_IO_VECTORS = 16;
     struct Buffer {
-        T* buffer;
+        T *buffer;
         iovec io_vectors[NUM_IO_VECTORS];
 
         explicit Buffer(size_t size) {
-            buffer = (T*)malloc(size);
+            buffer = (T *) malloc(size);
             for (size_t i = 0; i < NUM_IO_VECTORS; i++) {
-                char *ptr = (char*)buffer;
+                char *ptr = (char *) buffer;
                 io_vectors[i].iov_base = ptr + (size / NUM_IO_VECTORS) * i;
                 io_vectors[i].iov_len = size / NUM_IO_VECTORS;
             }
@@ -275,7 +310,8 @@ void LargeReadTest(int argc, char **argv) {
             auto buffer = buffers.front();
             buffers.pop();
             std::uniform_int_distribution<size_t> offset_distribution(0, file.file_size / read_size - 1);
-            io_uring_prep_readv(sqe, fds[file_index], buffer->io_vectors, NUM_IO_VECTORS, offset_distribution(rng) * read_size);
+            io_uring_prep_readv(sqe, fds[file_index], buffer->io_vectors, NUM_IO_VECTORS,
+                                offset_distribution(rng) * read_size);
             io_uring_sqe_set_data(sqe, buffer);
             requests_in_ring++;
         }
@@ -293,19 +329,21 @@ void LargeReadTest(int argc, char **argv) {
             SYSCALL(cqe->res);
             requests_in_ring--;
             io_uring_cqe_seen(&ring, cqe);
-            buffers.push((Buffer*)io_uring_cqe_get_data(cqe));
+            buffers.push((Buffer *) io_uring_cqe_get_data(cqe));
         }
     }
 }
 
 std::map<std::string, std::function<void(int, char **)>> test_functions = {
-    {"unordered_io",   UnorderedIOTest},
-    {"read_only",      ReadOnlyTest},
-    {"ordered_writer", OrderedFileWriterTest},
-    {"sorting",        InMemorySortingTest},
-    {"rand_read",      RandomReadTest},
-    {"permutation",    InMemoryPermutationTest},
-    {"large_read",     LargeReadTest}};
+    {"unordered_io",          UnorderedIOTest},
+    {"read_only",             ReadOnlyTest},
+    {"ordered_writer",        OrderedFileWriterTest},
+    {"rand_read",             RandomReadTest},
+    {"large_read",            LargeReadTest},
+    {"sorting_in_memory",     InMemorySortingTest},
+    {"permutation_in_memory", InMemoryPermutationTest},
+    {"reduce_in_memory",      InMemoryReduceTest},
+    {"map_in_memory",         InMemoryMapTest}};
 
 int main(int argc, char **argv) {
     ParseGlobalArguments(argc, argv);

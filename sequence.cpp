@@ -18,8 +18,13 @@ parlay::monoid monoid([](size_t a, size_t b) {
 void RunReduce(int argc, char **argv) {
     CHECK(argc >= 3);
     std::string prefix(argv[2]);
+    parlay::internal::timer timer("Reduce");
+    timer.next("Start prep");
     auto files = FindFiles(prefix);
+    GetFileInfo(files);
+    timer.next("Start reduce");
     auto result = Reduce<size_t>(files, monoid);
+    timer.next("Finish reduce");
     LOG(INFO) << "Result: " << result;
 }
 
@@ -27,9 +32,13 @@ void RunMap(int argc, char **argv) {
     CHECK(argc >= 4);
     std::string prefix(argv[2]);
     std::string result_prefix(argv[3]);
+    parlay::internal::timer timer("Map");
+    timer.next("Start prep");
     auto files = FindFiles(prefix);
     GetFileInfo(files);
+    timer.next("Start map");
     Map<size_t, size_t>(files, result_prefix, [](size_t num) { return num / 2; });
+    timer.next("Finish map");
 }
 
 void VerifyMap(int argc, char **argv) {
