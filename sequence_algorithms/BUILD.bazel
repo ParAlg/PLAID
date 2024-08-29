@@ -18,3 +18,13 @@ cc_library(
         "@parlaylib//parlay:primitives",
     ],
 )
+
+cc_library(
+    name = "filter",
+    srcs = ["filter.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//utils:io_utils",
+        "@parlaylib//parlay:primitives",
+    ],
+)
