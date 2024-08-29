@@ -22,7 +22,6 @@ void Map(std::vector<FileInfo> files, std::string result_prefix, std::function<R
             if (ptr == nullptr) {
                 break;
             }
-            auto index = element_index - files[file_index].before_size / sizeof(T);
             R *result;
             if (sizeof(T) == sizeof(R)) {
                 for (size_t i = 0; i < n; i++) {
@@ -36,7 +35,7 @@ void Map(std::vector<FileInfo> files, std::string result_prefix, std::function<R
                 }
                 free(ptr);
             }
-            writer.Push(std::shared_ptr<R>(result, free), n, file_index, index * sizeof(R));
+            writer.Push(std::shared_ptr<R>(result, free), n, file_index, element_index * sizeof(R));
         }
     }, 1);
     writer.Wait();

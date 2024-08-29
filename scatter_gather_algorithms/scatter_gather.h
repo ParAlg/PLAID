@@ -50,7 +50,7 @@ private:
      * to the writer. It may or may not be written to disk at the writer's discretion.
      * @param comp
      */
-    void AssignToBucket(size_t num_buckets, const AssignerFunction assigner) {
+    void AssignToBucket(size_t num_buckets, const AssignerFunction assigner, const std::vector<FileInfo> &files) {
         // reads from the reader and put result into a thread-local buffer; send to intermediate_writer when buffer is full
         size_t buffer_size = SAMPLE_SORT_BUCKET_SIZE / sizeof(T);
         // each bucket stores a pointer to an array, which will hold temporary values in that bucket
@@ -67,10 +67,11 @@ private:
             if (data == nullptr) {
                 break;
             }
+            const size_t index_start = files[file_index].before_size + data_index;
             // TODO: sort chunk in memory and then interleave samples with it
             for (size_t i = 0; i < size; i++) {
                 // use binary search to find which bucket it belongs to
-                size_t bucket_index = assigner(data[i], data_index + i);
+                size_t bucket_index = assigner(data[i], index_start + i);
                 // move data to bucket
                 buckets[bucket_index][buffer_index[bucket_index]++] = data[i];
                 // flush if bucket is full
@@ -320,7 +321,7 @@ public:
             }, 1);
         }, [&]() {
             parlay::parallel_for(0, parlay::num_workers() - intermedia_io_threads, [&](int i) {
-                AssignToBucket(num_buckets, assigner);
+                AssignToBucket(num_buckets, assigner, input_files);
             }, 1);
             // retrieve buckets from intermediate_writer
             bucket_list = intermediate_writer.ReapResult();

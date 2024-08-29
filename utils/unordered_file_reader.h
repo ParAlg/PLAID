@@ -132,18 +132,15 @@ private:
         size_t bytes_completed = 0, bytes_issued = 0;
         size_t file_size;
         const size_t file_index;
-        // number of elements before the start of this file in the entire sequence of files
-        const size_t before_size;
 
-        OpenedFile(const std::string &name, size_t file_size,
-                   size_t file_index, size_t before_size)
-            : file_size(file_size), file_index(file_index), before_size(before_size) {
+        OpenedFile(const std::string &name, size_t file_size, size_t file_index)
+            : file_size(file_size), file_index(file_index) {
             fd = open(name.c_str(), O_DIRECT | O_RDONLY);
             SYSCALL(fd);
         }
 
         explicit OpenedFile(const FileInfo &info)
-            : OpenedFile(info.file_name, info.file_size, info.file_index, info.before_size) {
+            : OpenedFile(info.file_name, info.file_size, info.file_index) {
         }
 
         ~OpenedFile() {
@@ -193,7 +190,7 @@ private:
                     // add data to buffer queue
                     reader->Push(request->data, request->read_size / sizeof(T),
                                  request->file->file_index,
-                                 (request->file->before_size + request->offset) / sizeof(T));
+                                 request->offset / sizeof(T));
                     auto *file = request->file;
                     file->bytes_completed += request->read_size;
                     if (file->bytes_completed == file->file_size) {
