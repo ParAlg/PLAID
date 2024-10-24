@@ -68,7 +68,6 @@ private:
             i++;
             remaining_pivots--;
         }
-
         return result;
     }
 

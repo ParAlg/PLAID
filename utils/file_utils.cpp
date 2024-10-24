@@ -80,6 +80,10 @@ void GetFileInfo(std::vector<FileInfo> &info, bool eof_marker, bool compute_befo
 
 std::vector<std::string> ssd_list;
 
+void PopulateSSDList() {
+    PopulateSSDList(SSD_COUNT, false, false);
+}
+
 void PopulateSSDList(size_t count, bool random, bool verbose) {
     CHECK(count <= SSD_COUNT);
     CHECK(ssd_list.empty());
@@ -122,6 +126,14 @@ void PopulateSSDList(const std::vector<int> &ssd_numbers, bool verbose) {
     }
 }
 
+void CheckSSDList() {
+    if (ssd_list.empty()) {
+        [[unlikely]]
+        LOG(WARNING) << "Number of SSDs to use is not specified. Defaulting to all of them.";
+        PopulateSSDList();
+    }
+}
+
 /**
  * Generate a file name and, in doing so, assign it to a SSD in a round-robin fashion
  *
@@ -130,11 +142,7 @@ void PopulateSSDList(const std::vector<int> &ssd_numbers, bool verbose) {
  * @return
  */
 std::string GetFileName(const std::string &prefix, size_t file_number) {
-    if (ssd_list.empty()) {
-        [[unlikely]]
-        LOG(WARNING) << "Number of SSDs to use is not specified. Defaulting to all of them.";
-        PopulateSSDList(SSD_COUNT, false, false);
-    }
+    CheckSSDList();
     size_t ssd_number = file_number % ssd_list.size();
     return ssd_list[ssd_number] + "/" + prefix + std::to_string(file_number);
 }
@@ -209,7 +217,7 @@ void *ReadEntireFile(const std::string &file_name, size_t read_size) {
 }
 
 std::vector<std::string> GetSSDList() {
-    CHECK(!ssd_list.empty()) << "Did you forget to parse global arguments?";
+    CheckSSDList();
     return ssd_list;
 }
 

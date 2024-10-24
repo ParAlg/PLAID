@@ -10,6 +10,7 @@
 #include "absl/log/log.h"
 #include "sequence_algorithms/reduce.h"
 #include "sequence_algorithms/map.h"
+#include "sequence_algorithms/filter.h"
 
 parlay::monoid monoid([](size_t a, size_t b) {
     return a ^ b;
@@ -86,6 +87,19 @@ void VerifyReduce(int argc, char **argv) {
     }
 }
 
+void RunFilter(int argc, char **argv) {
+    CHECK(argc >= 4);
+    std::string prefix(argv[2]);
+    std::string result_prefix(argv[3]);
+    parlay::internal::timer timer("Map");
+    timer.next("Start prep");
+    auto files = FindFiles(prefix);
+    GetFileInfo(files);
+    timer.next("Start filter");
+    Filter<size_t>(files, result_prefix, [](size_t num) { return num % 10 == 0; });
+    timer.next("Finish filter");
+}
+
 int main(int argc, char **argv) {
     ParseGlobalArguments(argc, argv);
     if (argc < 2) {
@@ -98,7 +112,8 @@ int main(int argc, char **argv) {
             {"reduce",        RunReduce},
             {"verify_reduce", VerifyReduce},
             {"map",           RunMap},
-            {"verify_map",    VerifyMap}
+            {"verify_map",    VerifyMap},
+            {"filter",        RunFilter}
         }
     );
     if (commands.count(argv[1])) {

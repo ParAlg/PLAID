@@ -13,13 +13,13 @@
 
 
 void ParseGlobalArguments(int &argc, char **argv) {
-    int argument_index = 1;
     std::map<std::string, std::string> arguments = {
         {"num_ssd", std::to_string(SSD_COUNT)},
         {"ssd_selection", "s"},
         {"ssd", ""}
     };
 
+    int argument_index = 1;
     for (; argument_index < argc; argument_index++) {
         std::string s(argv[argument_index]);
         if (s.size() < 2 || s[0] != '-') {

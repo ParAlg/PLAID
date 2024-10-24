@@ -16,8 +16,8 @@
  */
 #define SYSCALL(expr) do { \
     long long __result = (expr);   \
-    if (__builtin_expect(__result < 0, 0)) LOG(ERROR) << "System call returned " << __result << ": " \
-    << std::strerror(errno) << " or " << std::strerror(-__result);                                 \
+    if (__builtin_expect(__result < 0, 0)) LOG(ERROR) << "System call returned " << __result << " (" \
+    << std::strerror(-__result) << ") with errno " << errno << " ("<< std::strerror(errno) << ").";  \
 } while(0)
 
 #define ASSERT(expr, msg) do { \

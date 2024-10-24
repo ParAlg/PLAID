@@ -48,6 +48,7 @@ cc_binary(
         "-luring",
     ],
     deps = [
+        "//utils:io_utils",
         "//utils:logger",
         "@parlaylib//parlay/internal:get_time",
     ],

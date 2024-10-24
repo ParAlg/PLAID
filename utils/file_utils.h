@@ -42,6 +42,7 @@ void ReadFileOnce(const std::string &file_name, void *buffer, size_t start, size
 
 void* ReadEntireFile(const std::string &file_name, size_t read_size);
 
+void PopulateSSDList();
 void PopulateSSDList(size_t count, bool random, bool verbose);
 void PopulateSSDList(const std::vector<int> &ssd_numbers, bool verbose);
 std::string GetFileName(const std::string &prefix, size_t file_number);
