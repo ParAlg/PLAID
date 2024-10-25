@@ -19,22 +19,26 @@ bool simple_write_test(const char* file_name, const void* data, int data_size) {
     SYSCALL(res);
     if (res != data_size) {
         LOG(ERROR) << "Expected write of size " << data_size << ", got write of size " << res;
-    }
-    SYSCALL(close(fd));
-    fd = open(file_name, O_RDONLY | O_DIRECT);
-    void* buffer = malloc(data_size);
-    res = read(fd, buffer, data_size);
-    SYSCALL(res);
-    if (res != data_size) {
-        LOG(ERROR) << "Expected " << data_size << " bytes read. Got " << res << " bytes.";
         success = false;
     }
-    if (memcmp(buffer, data, data_size) != 0) {
-        LOG(ERROR) << "File content does not match.";
-        success = false;
-    }
-    free(buffer);
     SYSCALL(close(fd));
+    // now make sure the content written to the file can be read
+    if (success) {
+        fd = open(file_name, O_RDONLY | O_DIRECT);
+        void *buffer = malloc(data_size);
+        res = read(fd, buffer, data_size);
+        SYSCALL(res);
+        if (res != data_size) {
+            LOG(ERROR) << "Expected " << data_size << " bytes read. Got " << res << " bytes.";
+            success = false;
+        }
+        if (memcmp(buffer, data, data_size) != 0) {
+            LOG(ERROR) << "File content does not match.";
+            success = false;
+        }
+        free(buffer);
+        SYSCALL(close(fd));
+    }
     SYSCALL(unlink(file_name));
     return success;
 }
@@ -55,13 +59,20 @@ bool io_uring_usable() {
     return false;
 }
 
-void test_io_uring(const char* file_name, int* data, size_t array_size, size_t file_size) {
+bool test_io_uring(const char* file_name, int* data, size_t array_size, size_t file_size) {
     parlay::internal::timer timer("test_io_uring");
     int fd = open(file_name, O_WRONLY | O_CREAT | O_DIRECT, 0744);
     SYSCALL(fd);
 
     struct io_uring ring;
-    SYSCALL(io_uring_queue_init(3600, &ring, IORING_SETUP_SINGLE_ISSUER));
+    int init = io_uring_queue_init(3600, &ring, IORING_SETUP_SINGLE_ISSUER);
+    SYSCALL(init);
+    if (fd == -1 || init != 0) {
+        cleanup:
+        close(fd);
+        unlink(file_name);
+        return false;
+    }
 
     std::set<size_t> expected_data;
     timer.next("Start writing");
@@ -86,8 +97,13 @@ void test_io_uring(const char* file_name, int* data, size_t array_size, size_t f
         auto index = (size_t)io_uring_cqe_get_data(cqe);
         if (expected_data.erase(index) != 1) {
             LOG(ERROR) << "Expected " << index << " in the set of ring data.";
+            goto cleanup;
         }
         io_uring_cqe_seen(&ring, cqe);
+    }
+    if (!expected_data.empty()) {
+        LOG(ERROR) << "Not all requests are reaped";
+        goto cleanup;
     }
     timer.next("All writes completed");
     SYSCALL(close(fd));
@@ -115,6 +131,8 @@ void test_io_uring(const char* file_name, int* data, size_t array_size, size_t f
         data[0] = (int)index + 1;
         if (memcmp(data, buffers[index], array_size) != 0) {
             LOG(ERROR) << "Data mismatch";
+            free(buffers);
+            goto cleanup;
         }
     }
     timer.next("Reads completed");
@@ -122,6 +140,7 @@ void test_io_uring(const char* file_name, int* data, size_t array_size, size_t f
     io_uring_queue_exit(&ring);
     SYSCALL(close(fd));
     SYSCALL(unlink(file_name));
+    return true;
 }
 
 int main() {
@@ -144,7 +163,7 @@ int main() {
     LOG(INFO) << "Testing whether io_uring can be used";
     CHECK(io_uring_usable());
     LOG(INFO) << "Testing whether io_uring can be used to write to a SSD (small write)";
-    test_io_uring((GetSSDList()[0] + "/io_uring_test").c_str(), data, ARRAY_SIZE, ARRAY_SIZE);
+    CHECK(test_io_uring((GetSSDList()[0] + "/io_uring_test").c_str(), data, ARRAY_SIZE, ARRAY_SIZE));
     LOG(INFO) << "Testing whether io_uring can be used to write to a SSD (big write)";
     test_io_uring((GetSSDList()[0] + "/io_uring_test").c_str(), data, ARRAY_SIZE, FILE_SIZE);
     LOG(INFO) << "All tests complete.";
