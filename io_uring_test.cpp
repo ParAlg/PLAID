@@ -25,7 +25,7 @@ bool simple_write_test(const char* file_name, const void* data, int data_size) {
     // now make sure the content written to the file can be read
     if (success) {
         fd = open(file_name, O_RDONLY | O_DIRECT);
-        void *buffer = malloc(data_size);
+        void *buffer = aligned_alloc(O_DIRECT_MULTIPLE, data_size);
         res = read(fd, buffer, data_size);
         SYSCALL(res);
         if (res != data_size) {
@@ -81,7 +81,7 @@ bool test_io_uring(const char* file_name, int* data, size_t array_size, size_t f
         do {
             sqe = io_uring_get_sqe(&ring);
         } while (sqe == nullptr);
-        int *write_data = (int*)malloc(array_size);
+        int *write_data = (int*)aligned_alloc(O_DIRECT_MULTIPLE, array_size);
         memcpy(write_data, data, array_size);
         write_data[0] = (int)i + 1;
         io_uring_prep_write(sqe, fd, write_data, array_size, i * array_size);
@@ -116,7 +116,7 @@ bool test_io_uring(const char* file_name, int* data, size_t array_size, size_t f
         do {
             sqe = io_uring_get_sqe(&ring);
         } while (sqe == nullptr);
-        int *read_buffer = (int*)malloc(array_size);
+        int *read_buffer = (int*)aligned_alloc(O_DIRECT_MULTIPLE, array_size);
         buffers[i] = read_buffer;
         io_uring_prep_read(sqe, fd, read_buffer, array_size, i * array_size);
         io_uring_sqe_set_data(sqe, (void*)i);
@@ -148,7 +148,7 @@ int main() {
     const size_t FILE_SIZE = 1UL << 28;
     const size_t N = 1UL << 20;
     const size_t ARRAY_SIZE = N * sizeof(int);
-    int *data = (int*)malloc(ARRAY_SIZE);
+    int *data = (int*)aligned_alloc(O_DIRECT_MULTIPLE, ARRAY_SIZE);
     for (size_t j = 0; j < N; j++) {
         data[j] = (int)(j * j) - 3;
     }
