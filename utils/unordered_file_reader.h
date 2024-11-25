@@ -78,6 +78,7 @@ public:
      * @param size
      */
     void Push(T *data, size_t size, size_t file_index, size_t data_index) {
+        CHECK((size_t)data % O_DIRECT_MULTIPLE == 0) << "Buffers used by the UnorderedFileReader must be aligned.";
         buffer_queue.Push({data, size, file_index, data_index});
     }
 
@@ -215,7 +216,7 @@ private:
                 request->offset = file->bytes_issued;
                 auto read_size = std::min(read_array_size * sizeof(T), file->file_size - file->bytes_issued);
                 request->read_size = read_size;
-                request->data = (T *) malloc(read_size);
+                request->data = (T *) aligned_alloc(O_DIRECT_MULTIPLE, read_size);
 
                 // issue a read on an opened file
                 struct io_uring_sqe *sqe;

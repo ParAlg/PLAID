@@ -23,7 +23,7 @@ void GenerateUniformRandomNumbers(const std::string &prefix, size_t count) {
             if (current <= 0) {
                 return;
             }
-            std::shared_ptr<T> result((T*)malloc(GRANULARITY * sizeof(T)), free);
+            std::shared_ptr<T> result((T*)aligned_alloc(O_DIRECT_MULTIPLE, GRANULARITY * sizeof(T)), free);
             for (size_t i = 0; i < GRANULARITY; i++) {
                 result.get()[i] = distribution(rng);
             }

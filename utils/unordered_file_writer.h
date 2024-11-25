@@ -75,6 +75,7 @@ public:
         CHECK(size * sizeof(T) % O_DIRECT_MULTIPLE == 0)
                     << "Size (in bytes) must be aligned to the size of a page in O_DIRECT mode. "
                     << "Actual size: " << size * sizeof(T);
+        CHECK((size_t)data.get() % O_DIRECT_MULTIPLE == 0) << "Buffers used by the UnorderedFileWriter must be aligned.";
         auto request = new WriteRequest(std::move(data), size, file_index, file_offset);
         wait_queue.Push(request);
     }

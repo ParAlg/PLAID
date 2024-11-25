@@ -30,7 +30,7 @@ FileInfo FilterFile(const FileInfo &in_file, const std::string &out_file, const 
     std::priority_queue<QueueData, std::vector<QueueData>, decltype(cmp)> queue(cmp);
     constexpr size_t buffer_size_bytes = 4 << 20, buffer_size = buffer_size_bytes / sizeof(T);
     size_t buffer_index = 0;
-    auto buffer= (T*)malloc(buffer_size_bytes);
+    auto buffer = (T*)aligned_alloc(O_DIRECT_MULTIPLE, buffer_size_bytes);
     size_t write_count = 0;
     size_t next_index = 0;
     while (true) {
@@ -57,7 +57,7 @@ FileInfo FilterFile(const FileInfo &in_file, const std::string &out_file, const 
                 if (buffer_size == buffer_index) {
                     writer.Push(std::shared_ptr<T>(buffer, free), buffer_size);
                     write_count++;
-                    buffer = (T*)malloc(buffer_size_bytes);
+                    buffer = (T*)aligned_alloc(O_DIRECT_MULTIPLE, buffer_size_bytes);
                     buffer_index = 0;
                 }
                 i++;
