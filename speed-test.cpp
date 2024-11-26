@@ -19,7 +19,7 @@ void WriteFiles(const std::string &prefix, size_t n_bytes, size_t single_write_s
     UnorderedFileWriter<T> writer(prefix, 128, 2);
     size_t total_write_size = n_bytes;
     LOG(INFO) << "Preparing data";
-    auto array = std::shared_ptr<T>((T *) malloc(single_write_size), free);
+    auto array = std::shared_ptr<T>((T *) aligned_alloc(O_DIRECT_MULTIPLE, single_write_size), free);
     for (size_t i = 0; i < single_write_size / sizeof(T); i++) {
         array.get()[i] = i * i - 5 * i - 1;
     }
@@ -213,7 +213,7 @@ void RandomReadTest(int argc, char **argv) {
     auto file_name = GetFileName("random_read_test", rd());
     LOG(INFO) << "Using " << file_name;
     size_t buffer_size = sizeof(size_t) * n;
-    auto *buffer = static_cast<size_t *>(malloc(buffer_size));
+    auto *buffer = static_cast<size_t *>(aligned_alloc(O_DIRECT_MULTIPLE, buffer_size));
     for (size_t i = 0; i < n; i++) {
         buffer[i] = i;
     }
@@ -260,7 +260,7 @@ void LargeReadTest(int argc, char **argv) {
         iovec io_vectors[NUM_IO_VECTORS];
 
         explicit Buffer(size_t size) {
-            buffer = (T *) malloc(size);
+            buffer = (T *) aligned_alloc(O_DIRECT_MULTIPLE, size);
             for (size_t i = 0; i < NUM_IO_VECTORS; i++) {
                 char *ptr = (char *) buffer;
                 io_vectors[i].iov_base = ptr + (size / NUM_IO_VECTORS) * i;
