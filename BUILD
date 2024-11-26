@@ -34,6 +34,7 @@ cc_binary(
     name = "speed_test",
     srcs = ["speed-test.cpp"],
     deps = [
+        "//utils:aligned_type_allocator",
         "//utils:command_line",
         "//utils:io_utils",
         "//utils:logger",

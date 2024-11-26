@@ -18,6 +18,7 @@
 #include "utils/file_utils.h"
 #include "utils/unordered_file_reader.h"
 #include "utils/ordered_file_writer.h"
+#include "utils/type_allocator.h"
 
 
 /**
@@ -36,7 +37,7 @@ private:
     struct BucketData {
         char data[SAMPLE_SORT_BUCKET_SIZE];
     };
-    using bucket_allocator = parlay::type_allocator<BucketData>;
+    using bucket_allocator = AlignedTypeAllocator<BucketData, O_DIRECT_MULTIPLE>;
 
     /**
      * Keep polling from the reader for data and then assign items into buckets according to how they compare

@@ -22,6 +22,7 @@
 #include "utils/file_info.h"
 #include "utils/file_utils.h"
 #include "utils/simple_queue.h"
+#include "utils/type_allocator.h"
 
 /**
  * Not really an ordered file writer. This class creates many buckets. Each bucket corresponds to a file.
@@ -189,10 +190,8 @@ public:
      * @param count
      */
     void Write(size_t bucket_number, T *pointer, size_t count) {
-        if (bucket_number >= num_buckets) {
-            [[unlikely]]
-            LOG(ERROR) << "Invalid bucket number";
-        }
+        CHECK(bucket_number < num_buckets) << "Invalid bucket number";
+        CHECK((size_t)pointer % O_DIRECT_MULTIPLE == 0) << "Write buffers must be aligned";
         Bucket *bucket = &buckets[bucket_number];
         auto size = count * sizeof(T);
         std::unique_lock<std::mutex> bucket_lock(bucket->lock);
@@ -232,7 +231,7 @@ private:
     struct BucketData {
         char data[BucketSize];
     };
-    using BucketAllocator = parlay::type_allocator<BucketData>;
+    using BucketAllocator = AlignedTypeAllocator<BucketData, O_DIRECT_MULTIPLE>;
 
     struct IOVectorRequest {
         bool last_request = false;

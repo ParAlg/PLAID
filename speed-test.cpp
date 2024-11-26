@@ -91,7 +91,7 @@ void OrderedFileWriterTest(int argc, char **argv) {
     struct WriterData {
         unsigned char data[SAMPLE_SORT_BUCKET_SIZE];
     };
-    using Allocator = parlay::type_allocator<WriterData>;
+    using Allocator = AlignedTypeAllocator<WriterData, O_DIRECT_MULTIPLE>;
 
     CHECK(argc > 3) << "Expected an argument on total write size and number of buckets";
     using Type = long long;

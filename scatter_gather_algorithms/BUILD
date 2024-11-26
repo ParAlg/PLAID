@@ -29,6 +29,7 @@ cc_library(
     srcs = ["scatter_gather.h"],
     deps = [
         "//:config",
+        "//utils:aligned_type_allocator",
         "//utils:io_utils",
         "//utils:logger",
         "@parlaylib//parlay:primitives",

@@ -75,6 +75,7 @@ cc_library(
     name = "ordered_file_writer",
     srcs = ["ordered_file_writer.h"],
     deps = [
+        ":aligned_type_allocator",
         ":file_info",
         ":logger",
         ":simple_queue",
@@ -118,4 +119,11 @@ cc_library(
         "//:config",
         "@com_google_absl//absl/log",
     ],
+)
+
+cc_library(
+    name = "aligned_type_allocator",
+    srcs = ["type_allocator.h"],
+    visibility = ["//visibility:public"],
+    deps = ["@parlaylib//parlay:alloc"],
 )
