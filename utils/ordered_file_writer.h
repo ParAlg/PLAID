@@ -219,8 +219,8 @@ private:
     bool cleanup_started = false;
     size_t num_buckets = 0;
     std::vector<FileInfo> result_files;
-    Bucket *buckets;
-    IOVectorRequest *requests;
+    Bucket *buckets = nullptr;
+    IOVectorRequest *requests = nullptr;
 
     // should contain requests that are reset and ready to be reused
     SimpleQueue<IOVectorRequest*> free_requests;

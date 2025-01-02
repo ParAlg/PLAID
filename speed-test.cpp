@@ -13,6 +13,8 @@
 #include "utils/unordered_file_reader.h"
 #include "utils/random_read.h"
 #include "utils/command_line.h"
+#include "scatter_gather_algorithms/scatter_gather.h"
+#include "scatter_gather_algorithms/nop.h"
 
 template<typename T>
 void WriteFiles(const std::string &prefix, size_t n_bytes, size_t single_write_size = 4 * (1UL << 20)) {
@@ -334,6 +336,13 @@ void LargeReadTest(int argc, char **argv) {
     }
 }
 
+void ScatterGatherNopTest(int argc, char** argv) {
+    CHECK(argc == 4) << "Usage: " << argv[0] << " " << argv[1] << " <prefix> <bucket size>";
+    std::string input_prefix(argv[2]);
+    int num_buckets = (int)ParseLong(argv[3]);
+    ScatterGatherNop<size_t>(input_prefix, num_buckets);
+}
+
 std::map<std::string, std::function<void(int, char **)>> test_functions = {
     {"unordered_io",          UnorderedIOTest},
     {"read_only",             ReadOnlyTest},
@@ -343,6 +352,7 @@ std::map<std::string, std::function<void(int, char **)>> test_functions = {
     {"sorting_in_memory",     InMemorySortingTest},
     {"permutation_in_memory", InMemoryPermutationTest},
     {"reduce_in_memory",      InMemoryReduceTest},
+    {"scatter_gather_nop",    ScatterGatherNopTest},
     {"map_in_memory",         InMemoryMapTest}};
 
 int main(int argc, char **argv) {

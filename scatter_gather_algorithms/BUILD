@@ -36,3 +36,13 @@ cc_library(
         "@parlaylib//parlay/internal:get_time",
     ],
 )
+
+cc_library(
+    name = "scatter_gather_nop",
+    srcs = ["nop.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":scatter_gather",
+        "//utils:io_utils",
+    ],
+)
