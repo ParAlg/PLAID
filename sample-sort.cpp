@@ -90,7 +90,7 @@ void CompareSortingResult(Iterator start, Iterator end, const std::vector<FileIn
     // read each file and then compare the content of the file to the result of the in-memory sorting algorithm
     size_t total_size = end - start;
     size_t n_files = file_list.size();
-    size_t prefix_sum[n_files + 1];
+    std::vector<size_t> prefix_sum(n_files + 1, 0);
     prefix_sum[0] = 0;
     for (size_t i = 1; i < n_files; i++) {
         prefix_sum[i] = prefix_sum[i - 1] + file_list[i - 1].true_size / sizeof(T);
