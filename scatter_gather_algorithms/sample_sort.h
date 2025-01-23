@@ -93,47 +93,6 @@ private:
         return std::max(std::min(file_size / (1UL << 27), max_sample_size), min_sample_size);
     }
 
-    template<typename Comparator>
-    struct TwoLayerTree {
-        Comparator comp;
-        size_t step;
-        parlay::sequence<T> level_one;
-        parlay::sequence<T> level_two;
-
-        [[nodiscard]] inline size_t NextLevel(size_t i) const {
-            return (i + 1) * step - 1;
-        }
-
-        TwoLayerTree() = default;
-
-        TwoLayerTree(parlay::sequence<T> seq, Comparator comp,
-                     size_t target_l1_size) : comp(comp), level_two(seq) {
-            const size_t l1_size = target_l1_size / sizeof(T);
-            CHECK(l1_size < seq.size());
-            step = seq.size() / l1_size;
-            CHECK(step >= 2);
-            for (size_t i = 0; i < l1_size; i++) {
-                level_one.push_back(seq[NextLevel(i)]);
-            }
-        }
-
-        [[nodiscard]] inline size_t Find(size_t num) const {
-            auto index_end = std::distance(level_one.begin(),
-                                           std::upper_bound(level_one.begin(), level_one.end(), num, comp));
-            auto index_start = index_end - 1;
-            if (level_two[index_start] == num) {
-                return index_start;
-            }
-            index_start = index_start == -1 ? 0 : NextLevel(index_start);
-            auto iter = level_two.begin() + index_start;
-            while (iter != level_two.end() && comp(*iter, num)) {
-                iter++;
-                index_start++;
-            }
-            return index_start;
-        }
-    };
-
 public:
 
     template<typename Comparator>
@@ -144,7 +103,6 @@ public:
         GetFileInfo(input_files);
         size_t num_samples = GetSampleSize(input_files);
         const auto pivots = parlay::sort(GetPivots(input_files, num_samples), comp);
-        const size_t L1_SIZE = 64 * (1 << 10); // 64kb
         ScatterGather<T> scatter_gather;
         typedef typename ScatterGather<T>::AssignerFunction Assigner;
         const Assigner simple_assigner = [&](const T &t, [[maybe_unused]] size_t _) {
@@ -153,23 +111,13 @@ public:
                                           std::upper_bound(pivots.begin(), pivots.end(),
                                                            t, comp));
         };
-        TwoLayerTree<Comparator> tree;
-        bool use_tree = (sizeof(T) * pivots.size()) > L1_SIZE;
-        LOG(INFO) << pivots.size() << " pivots. Use tree assigner " << use_tree;
-        if (use_tree) {
-            tree = TwoLayerTree(pivots, comp, L1_SIZE / 2);
-        }
-        const Assigner tree_assigner = [&](const T &t, [[maybe_unused]] size_t _) {
-            return tree.Find(t);
-        };
         const auto simple_processor = [&](T **buffer, size_t n) {
             T *ptr = *buffer;
             auto seq = parlay::make_slice(ptr, ptr + n);
             parlay::sort_inplace(seq, comp);
-            // parlay::internal::seq_sort_inplace(seq, comp, false);
         };
         auto results = scatter_gather.Run(input_files, result_prefix, num_samples + 1,
-                                          (use_tree ? tree_assigner : simple_assigner),
+                                          simple_assigner,
                                           simple_processor);
         timer.next("Sorting complete");
         timer.stop();
