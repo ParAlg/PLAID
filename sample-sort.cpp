@@ -211,17 +211,29 @@ void TestSampleSortSmall(size_t n, bool generate) {
 
 void generate(int argc, char **argv) {
     if (argc < 5) {
-        LOG(ERROR) << "Usage: " << argv[0] << " gen <data size (power of 2)> <prefix> <big: 1|0>";
+        LOG(ERROR) << "Usage: " << argv[0] << " gen <data size (power of 2)> <prefix> <type>\n"
+         << "  types:\n"
+         << "  0: uniform random\n"
+         << "  1: permutation (small)\n"
+         << "  2: zipfian (small)";
         return;
     }
     size_t n = 1UL << ParseLong(argv[2]);
     std::string prefix(argv[3]);
-    bool big_sample = (bool) ParseLong(argv[4]);
-    LOG(INFO) << "Generating " << n << " numbers with file prefix " << prefix << ". Big sample: " << big_sample << ".";
-    if (big_sample) {
-        GenerateUniformRandomNumbers<size_t>(prefix, n);
-    } else {
-        GenerateSmallSample(prefix, n);
+    size_t sample_type = ParseLong(argv[4]);
+    LOG(INFO) << "Generating " << n << " numbers with file prefix " << prefix << ". Sample type: " << sample_type << ".";
+    switch(sample_type) {
+        case 0:
+            GenerateUniformRandomNumbers<size_t>(prefix, n);
+            break;
+        case 1:
+            GenerateSmallSample(prefix, n);
+            break;
+        case 2:
+            GenerateZipfianRandomNumbers<size_t>(prefix, n, 1.0);
+            break;
+        default:
+            LOG(ERROR) << "Unknown sample type " << sample_type;
     }
 }
 

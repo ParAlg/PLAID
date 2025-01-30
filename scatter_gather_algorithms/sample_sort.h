@@ -141,6 +141,7 @@ private:
                     map.emplace(prev, std::make_pair(i - count, count));
                 }
                 prev = val;
+                count = 1;
             }
             if (count > 1) {
                 map.emplace(prev, std::make_pair(pivots.size() - count, count));

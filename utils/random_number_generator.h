@@ -10,4 +10,7 @@
 template <typename T>
 void GenerateUniformRandomNumbers(const std::string &prefix, size_t count);
 
+template <typename T>
+void GenerateZipfianRandomNumbers(const std::string &prefix, size_t count, double s);
+
 #endif //SORTING_RANDOM_NUMBER_GENERATOR_H

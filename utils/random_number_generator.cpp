@@ -4,8 +4,49 @@
 
 #include "random_number_generator.h"
 #include "parlay/parallel.h"
+#include "parlay/sequence.h"
+#include "parlay/primitives.h"
 
 #include <random>
+
+/**
+ * From https://github.com/ucrparlay/DovetailSort/blob/91eab06c2b3256104f7ac2b71227aae664e55e5a/include/parlay/generator.h
+ * License: MIT
+ */
+template<typename T>
+parlay::sequence<T> GenerateZipfianDistribution(size_t n, double s) {
+    size_t cutoff = n;
+    auto harmonic = parlay::delayed_seq<double>(cutoff, [&](size_t i) { return 1.0 / std::pow(i + 1, s); });
+    double sum = parlay::reduce(make_slice(harmonic));
+    double v = n / sum;
+    parlay::sequence<size_t> nums(cutoff + 1, 0);
+    parlay::parallel_for(0, cutoff, [&](size_t i) { nums[i] = (T)std::max(1.0, v / std::pow(i + 1, s)); });
+    size_t tot = parlay::scan_inplace(make_slice(nums));
+    assert(tot >= n);
+    parlay::sequence<T> seq(n);
+    parlay::parallel_for(0, cutoff, [&](size_t i) {
+        parlay::parallel_for(nums[i], std::min(n, nums[i + 1]), [&](size_t j) {
+            seq[j] = i;
+        });
+    });
+    return random_shuffle(seq);
+}
+
+template<typename T>
+void GenerateZipfianRandomNumbers(const std::string &prefix, size_t n, double s) {
+    auto nums = GenerateZipfianDistribution<T>(n, s);
+    T* data = nums.data();
+    UnorderedFileWriter<T> writer(prefix);
+    constexpr auto WRITE_SIZE = 4 << 20;
+    const auto step = WRITE_SIZE / sizeof(T);
+    for (size_t i = 0; i < n; i += step) {
+        T* buffer = (T*)std::aligned_alloc(O_DIRECT_MULTIPLE, WRITE_SIZE);
+        memcpy(buffer, data + i, WRITE_SIZE);
+        std::shared_ptr<T> temp(buffer, free);
+        writer.Push(temp, step);
+    }
+    writer.Close();
+}
 
 template <typename T>
 void GenerateUniformRandomNumbers(const std::string &prefix, size_t count) {
@@ -37,3 +78,5 @@ template void GenerateUniformRandomNumbers<int64_t>(const std::string &prefix, s
 template void GenerateUniformRandomNumbers<uint64_t>(const std::string &prefix, size_t count);
 template void GenerateUniformRandomNumbers<int32_t>(const std::string &prefix, size_t count);
 template void GenerateUniformRandomNumbers<uint32_t>(const std::string &prefix, size_t count);
+
+template void GenerateZipfianRandomNumbers<size_t>(const std::string &prefix, size_t n, double s);
