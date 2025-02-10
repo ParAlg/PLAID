@@ -111,8 +111,8 @@ void OrderedFileWriterTest(int argc, char **argv) {
         parlay::parallel_for(0, TOTAL_WRITE_SIZE / SINGLE_WRITE_SIZE, [&](size_t i) {
             std::uniform_int_distribution<size_t> dis(0, NUM_BUCKETS - 1);
             auto array = reinterpret_cast<Type *>(Allocator::alloc());
-            for (Type index = 0; index < (Type) n; index++) {
-                array[index] = index * index - 5 * index - 1;
+            for (size_t index = 0; index < n; index++) {
+                array[index] = (Type)(index * index - 5 * index - 1);
             }
             auto r = gen[i];
             writer.Write(dis(r), array, n);
