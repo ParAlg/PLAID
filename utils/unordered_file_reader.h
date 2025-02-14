@@ -55,7 +55,7 @@ public:
     }
 
     void Start(size_t array_size = 1 << 20,
-               size_t max_outstanding_requests = IO_URING_BUFFER_SIZE,
+               size_t max_outstanding_requests = IO_URING_BUFFER_SIZE * 2,
                size_t io_uring_size = IO_URING_BUFFER_SIZE,
                size_t num_io_threads = 1) {
         CHECK(num_io_threads > 0) << "Need at least 1 thread";

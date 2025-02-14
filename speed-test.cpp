@@ -51,7 +51,7 @@ void UnorderedIOTest(int argc, char **argv) {
     LOG(INFO) << "Files found";
     UnorderedFileReader<Type> reader;
     reader.PrepFiles(files);
-    reader.Start(n, 512, 512, 2);
+    reader.Start(n, 128, 64, 2);
     for (size_t i = 0; i < TOTAL_WRITE_SIZE / SINGLE_WRITE_SIZE; i++) {
         auto [ptr, size, _, _2] = reader.Poll();
         CHECK(size == n) << "Read size is expected to be the same. Actual size: "
@@ -99,8 +99,7 @@ void OrderedFileWriterTest(int argc, char **argv) {
     };
     using Allocator = AlignedTypeAllocator<WriterData, O_DIRECT_MULTIPLE>;
 
-    CHECK(argc > 3)
-                    << "Expected an argument on total write size and number of buckets";
+    CHECK(argc > 3) << "Expected an argument on total write size and number of buckets";
     using Type = long long;
     const std::string prefix = "test_files";
     const size_t TOTAL_WRITE_SIZE = 1UL << std::strtol(argv[2], nullptr, 10);
