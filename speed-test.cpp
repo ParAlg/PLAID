@@ -368,21 +368,26 @@ void ScatterGatherNopTest(int argc, char **argv) {
 void AlignedAllocTest(int argc, char **argv) {
     parlay::internal::timer timer;
     const size_t NUM_ALLOCATIONS = 10000, SIZE = 4 << 20;
-    std::vector<void *> pointers(NUM_ALLOCATIONS, nullptr);
-    timer.next("Starting aligned alloc");
-    for (size_t i = 0; i < NUM_ALLOCATIONS; i++) {
-        pointers.push_back(std::aligned_alloc(4096, SIZE));
+    for (size_t alignment : {64, 512, 4096}) {
+        LOG(INFO) << "Using alignment " << alignment;
+        for (int rep = 0; rep < 3; rep++) {
+            std::vector<void *> pointers(NUM_ALLOCATIONS, nullptr);
+            timer.next("Starting aligned alloc");
+            for (size_t i = 0; i < NUM_ALLOCATIONS; i++) {
+                pointers.push_back(std::aligned_alloc(alignment, SIZE));
+            }
+            timer.next("Aligned alloc took");
+            std::for_each(pointers.begin(), pointers.end(), free);
+            pointers.clear();
+            timer.next("Allocating with malloc");
+            for (size_t i = 0; i < NUM_ALLOCATIONS; i++) {
+                pointers.push_back(malloc(SIZE));
+            }
+            timer.next("Malloc took");
+            std::for_each(pointers.begin(), pointers.end(), free);
+            timer.next("Done");
+        }
     }
-    timer.next("Aligned alloc took");
-    std::for_each(pointers.begin(), pointers.end(), free);
-    pointers.clear();
-    timer.next("Allocating with malloc");
-    for (size_t i = 0; i < NUM_ALLOCATIONS; i++) {
-        pointers.push_back(malloc(SIZE));
-    }
-    timer.next("Malloc took");
-    std::for_each(pointers.begin(), pointers.end(), free);
-    timer.next("Done");
 }
 
 std::map<std::string, std::function<void(int, char **)>> test_functions = {
