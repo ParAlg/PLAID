@@ -214,8 +214,9 @@ void generate(int argc, char **argv) {
         LOG(ERROR) << "Usage: " << argv[0] << " gen <data size (power of 2)> <prefix> <type>\n"
          << "  types:\n"
          << "  0: uniform random\n"
-         << "  1: permutation (small)\n"
-         << "  2: zipfian (small)";
+         << "  1: permutation (in-memory)\n"
+         << "  2: zipfian (in-memory)\n"
+         << "  3: exponential (in-memory)";
         return;
     }
     size_t n = 1UL << ParseLong(argv[2]);
@@ -232,6 +233,8 @@ void generate(int argc, char **argv) {
         case 2:
             GenerateZipfianRandomNumbers<size_t>(prefix, n, 1.0);
             break;
+        case 3:
+            GenerateExponentialRandomNumbers<size_t>(prefix, n, 1.0);
         default:
             LOG(ERROR) << "Unknown sample type " << sample_type;
     }
