@@ -5,7 +5,13 @@
 #ifndef SORTING_RANDOM_NUMBER_GENERATOR_H
 #define SORTING_RANDOM_NUMBER_GENERATOR_H
 
-#include "utils/unordered_file_writer.h"
+#include <cstdlib>
+#include <string>
+
+#include "parlay/sequence.h"
+
+template<typename T>
+parlay::sequence<T> RandomSequence(size_t n);
 
 template <typename T>
 void GenerateUniformRandomNumbers(const std::string &prefix, size_t count);

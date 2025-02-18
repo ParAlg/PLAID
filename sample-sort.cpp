@@ -7,6 +7,7 @@
 #include "scatter_gather_algorithms/sample_sort.h"
 #include "utils/random_number_generator.h"
 #include "utils/command_line.h"
+#include "utils/unordered_file_writer.h"
 
 template<typename NumberType>
 struct DummyIterator {

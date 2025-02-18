@@ -4,6 +4,7 @@ cc_binary(
     deps = [
         "//scatter_gather_algorithms:sample_sort",
         "//utils:command_line",
+        "//utils:io_utils",
         "//utils:random_number_generator",
     ],
 )
@@ -40,6 +41,7 @@ cc_binary(
         "//utils:command_line",
         "//utils:io_utils",
         "//utils:logger",
+        "//utils:random_number_generator",
         "//utils:random_read",
     ],
 )

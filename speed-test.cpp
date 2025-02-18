@@ -9,13 +9,12 @@
 #include "parlay/primitives.h"
 #include "parlay/random.h"
 #include "scatter_gather_algorithms/nop.h"
-#include "scatter_gather_algorithms/scatter_gather.h"
 #include "utils/command_line.h"
 #include "utils/ordered_file_writer.h"
 #include "utils/random_read.h"
 #include "utils/unordered_file_reader.h"
-#include "utils/unordered_file_writer.h"
 #include "benchmarks/io_benchmarks.h"
+#include "utils/random_number_generator.h"
 #include <map>
 
 void InMemorySortingTest(int argc, char **argv) {
@@ -68,18 +67,6 @@ void InMemoryPermutationTest(int argc, char **argv) {
     timer.next("Start permutation");
     parlay::random_shuffle(array);
     timer.next("parlay::permutation DONE");
-}
-
-template<typename T>
-parlay::sequence<T> RandomSequence(size_t n) {
-    parlay::random_generator rng;
-    std::uniform_int_distribution<T> dist;
-    parlay::sequence<T> sequence(n);
-    parlay::parallel_for(0, n, [&](size_t i) {
-        auto r = rng[i];
-        sequence[i] = dist(r);
-    });
-    return sequence;
 }
 
 void InMemoryReduceTest(int argc, char **argv) {

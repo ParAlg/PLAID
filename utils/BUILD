@@ -18,6 +18,7 @@ cc_library(
     deps = [
         ":io_utils",
         "@parlaylib//parlay:parallel",
+        "@parlaylib//parlay:sequence",
     ],
 )
 

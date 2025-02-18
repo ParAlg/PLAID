@@ -6,9 +6,29 @@
 #include "parlay/parallel.h"
 #include "parlay/sequence.h"
 #include "parlay/primitives.h"
+#include "utils/unordered_file_writer.h"
 
 #include <random>
 #include <cstdlib>
+
+template<typename T>
+parlay::sequence <T> RandomSequence(size_t n) {
+    parlay::random_generator rng;
+    std::uniform_int_distribution<T> dist;
+    parlay::sequence<T> sequence(n);
+    parlay::parallel_for(0, n, [&](size_t i) {
+        auto r = rng[i];
+        sequence[i] = dist(r);
+    });
+    return sequence;
+}
+
+template parlay::sequence<int64_t> RandomSequence(size_t);
+template parlay::sequence<uint64_t> RandomSequence(size_t);
+template parlay::sequence<int32_t> RandomSequence(size_t);
+template parlay::sequence<uint32_t> RandomSequence(size_t);
+template parlay::sequence<int8_t> RandomSequence(size_t);
+template parlay::sequence<uint8_t> RandomSequence(size_t);
 
 /**
  * From https://github.com/ucrparlay/DovetailSort/blob/91eab06c2b3256104f7ac2b71227aae664e55e5a/include/parlay/generator.h
