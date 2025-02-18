@@ -15,136 +15,8 @@
 #include "utils/random_read.h"
 #include "utils/unordered_file_reader.h"
 #include "utils/unordered_file_writer.h"
+#include "benchmarks/io_benchmarks.h"
 #include <map>
-
-template<typename T>
-void WriteFiles(const std::string &prefix, size_t n_bytes,
-                size_t single_write_size = 4 * (1UL << 20)) {
-    UnorderedFileWriter<T> writer(prefix, 128, 2);
-    size_t total_write_size = n_bytes;
-    LOG(INFO) << "Preparing data";
-    auto array = std::shared_ptr<T>(
-            (T *) aligned_alloc(O_DIRECT_MULTIPLE, single_write_size), free);
-    for (size_t i = 0; i < single_write_size / sizeof(T); i++) {
-        array.get()[i] = i * i - 5 * i - 1;
-    }
-    LOG(INFO) << "Starting writer loop";
-    for (size_t i = 0; i < total_write_size / single_write_size; i++) {
-        writer.Push(array, single_write_size / sizeof(T));
-    }
-    LOG(INFO) << "Waiting for completion";
-    writer.Wait();
-    LOG(INFO) << "Files written";
-}
-
-const size_t SINGLE_IO_SIZE = 4 * (1UL << 20);
-
-void UnorderedWriteTest(int argc, char **argv) {
-    CHECK(argc > 3) << "Usage: " << argv[0] << " " << argv[1] << " <file prefix> <size (pow of 2)>";
-    using Type = long long;
-    const std::string prefix(argv[2]);
-    const size_t TOTAL_WRITE_SIZE = 1UL << ParseLong(argv[3]);
-    parlay::internal::timer timer("Unordered write");
-    timer.next("experiment start");
-    WriteFiles<Type>(prefix, TOTAL_WRITE_SIZE, SINGLE_IO_SIZE);
-    timer.next("DONE");
-}
-
-void UnorderedReadTest(int argc, char **argv) {
-    CHECK(argc > 3) << "Usage: " << argv[0] << " " << argv[1] << " <file prefix>";
-    using Type = long long;
-    parlay::internal::timer timer("Unordered read");
-    auto files = FindFiles(std::string(argv[2]));
-    size_t expected_size = 0;
-    for (auto &file: files) {
-        expected_size += file.file_size;
-    }
-    LOG(INFO) << "Starting reading " << files.size() << " files " << expected_size
-              << " bytes " << (expected_size >> 30) << " GiB";
-    timer.next("start benchmark");
-    UnorderedFileReader<Type> reader;
-    reader.PrepFiles(files);
-    // FIXME: allocator is the bottleneck.
-    //  jemalloc performs worse than glibc (1/3) while mimalloc is much faster.
-    reader.Start(1 << 20, 128, 128, 4);
-    while (true) {
-        auto [ptr, size, _, _2] = reader.Poll();
-        if (ptr == nullptr || size == 0) {
-            break;
-        }
-        free(ptr);
-        expected_size -= size * sizeof(Type);
-    }
-    CHECK(expected_size == 0)
-                    << "Still " << expected_size << " bytes remaining unread";
-    timer.next("DONE");
-}
-
-void UnorderedIOTest(int argc, char **argv) {
-    CHECK(argc > 2) << "Expected an argument on write size";
-    using Type = long long;
-    const std::string prefix = "test_files";
-    const size_t TOTAL_WRITE_SIZE = 1UL << std::strtol(argv[2], nullptr, 10);
-    size_t n = SINGLE_IO_SIZE / sizeof(Type);
-    WriteFiles<Type>(prefix, TOTAL_WRITE_SIZE, SINGLE_IO_SIZE);
-    LOG(INFO) << "Done writing. Now looking for these files.";
-
-    auto files = FindFiles(prefix);
-    LOG(INFO) << "Files found";
-    UnorderedFileReader<Type> reader;
-    reader.PrepFiles(files);
-    reader.Start(n, 128, 64, 2);
-    for (size_t i = 0; i < TOTAL_WRITE_SIZE / SINGLE_IO_SIZE; i++) {
-        auto [ptr, size, _, _2] = reader.Poll();
-        CHECK(size == n) << "Read size is expected to be the same. Actual size: "
-                         << size;
-        //        auto result = memcmp(ptr, array.get(), SINGLE_WRITE_SIZE);
-        //        CHECK(result == 0) << "Expected two arrays to be the same";
-        free(ptr);
-    }
-    auto [ptr, size, _, _2] = reader.Poll();
-    if (ptr != nullptr || size != 0) {
-        LOG(ERROR) << "Received more input than expected";
-    }
-    LOG(INFO) << "File reader completed";
-}
-
-void OrderedFileWriterTest(int argc, char **argv) {
-    struct WriterData {
-        unsigned char data[SAMPLE_SORT_BUCKET_SIZE];
-    };
-    using Allocator = AlignedTypeAllocator<WriterData, O_DIRECT_MULTIPLE>;
-
-    CHECK(argc > 3) << "Expected an argument on total write size and number of buckets";
-    using Type = long long;
-    const std::string prefix = "test_files";
-    const size_t TOTAL_WRITE_SIZE = 1UL << std::strtol(argv[2], nullptr, 10);
-    const size_t SINGLE_WRITE_SIZE = SAMPLE_SORT_BUCKET_SIZE;
-    const size_t NUM_BUCKETS = std::strtol(argv[3], nullptr, 10);
-    OrderedFileWriter<Type, SAMPLE_SORT_BUCKET_SIZE> writer(prefix, NUM_BUCKETS,
-                                                            4 * (1 << 20));
-    parlay::par_do(
-            [&]() { writer.RunIOThread(&writer); },
-            [&]() {
-                const size_t n = SINGLE_WRITE_SIZE / sizeof(Type);
-                LOG(INFO) << "Starting writer loop";
-                parlay::random_generator gen;
-                parlay::parallel_for(
-                        0, TOTAL_WRITE_SIZE / SINGLE_WRITE_SIZE, [&](size_t i) {
-                            std::uniform_int_distribution<size_t> dis(0, NUM_BUCKETS - 1);
-                            auto array = reinterpret_cast<Type *>(Allocator::alloc());
-                            for (size_t index = 0; index < n; index++) {
-                                array[index] = (Type) (index * index - 5 * index - 1);
-                            }
-                            auto r = gen[i];
-                            writer.Write(dis(r), array, n);
-                        });
-                writer.CleanUp();
-                LOG(INFO) << "Waiting for completion";
-            });
-    auto results = writer.ReapResult();
-    LOG(INFO) << "Done writing";
-}
 
 void InMemorySortingTest(int argc, char **argv) {
     typedef size_t Type;
@@ -381,7 +253,7 @@ void ScatterGatherNopTest(int argc, char **argv) {
 }
 
 template<typename T>
-void ScatterGatherThread(size_t num_buckets, const std::function<std::pair<T*, size_t>()> &f) {
+void ScatterGatherThread(size_t num_buckets, const std::function<std::pair<T *, size_t>()> &f) {
     struct BucketData {
         char a[SAMPLE_SORT_BUCKET_SIZE];
     };
@@ -405,8 +277,8 @@ void ScatterGatherThread(size_t num_buckets, const std::function<std::pair<T*, s
             buckets[bucket_index][buffer_index[bucket_index]++] = data[i];
             if (buffer_index[bucket_index] == buffer_size) {
                 buffer_index[bucket_index] = 0;
-                bucket_allocator::free((BucketData*)buckets[bucket_index]);
-                buckets[bucket_index] = (T*) bucket_allocator::alloc();
+                bucket_allocator::free((BucketData *) buckets[bucket_index]);
+                buckets[bucket_index] = (T *) bucket_allocator::alloc();
             }
         }
         free(data);
@@ -421,22 +293,22 @@ void ScatterGatherNoIOTest(int argc, char **argv) {
     size_t num_elements_per_pointer = 1 << 20;
     size_t num_pointers = n / num_elements_per_pointer;
     size_t size_per_pointer = size / num_pointers;
-    T* pointers[num_pointers];
+    T *pointers[num_pointers];
     parlay::internal::timer timer("Scatter gather no IO");
     parlay::parallel_for(0, num_pointers, [&](size_t i) {
         auto seq = RandomSequence<T>(num_elements_per_pointer);
-        pointers[i] = (T*)std::aligned_alloc(O_DIRECT_MULTIPLE, size_per_pointer);
+        pointers[i] = (T *) std::aligned_alloc(O_DIRECT_MULTIPLE, size_per_pointer);
         memcpy(pointers[i], seq.data(), size_per_pointer);
     });
     size_t cur = 0;
     std::mutex mutex;
-    const auto generator = [&]() -> std::pair<T*, size_t> {
+    const auto generator = [&]() -> std::pair<T *, size_t> {
         mutex.lock();
         if (cur == num_pointers) {
             mutex.unlock();
             return {nullptr, 0};
         }
-        T* result = pointers[cur];
+        T *result = pointers[cur];
         cur++;
         mutex.unlock();
         return {result, num_elements_per_pointer};
@@ -451,7 +323,7 @@ void ScatterGatherNoIOTest(int argc, char **argv) {
 void AlignedAllocTest(int argc, char **argv) {
     parlay::internal::timer timer;
     const size_t NUM_ALLOCATIONS = 10000, SIZE = 4 << 20;
-    for (size_t alignment : {64, 512, 4096}) {
+    for (size_t alignment: {64, 512, 4096}) {
         LOG(INFO) << "Using alignment " << alignment;
         for (int rep = 0; rep < 3; rep++) {
             std::vector<void *> pointers(NUM_ALLOCATIONS, nullptr);
@@ -474,17 +346,17 @@ void AlignedAllocTest(int argc, char **argv) {
 }
 
 std::map<std::string, std::function<void(int, char **)>> test_functions = {
-        {"unordered_io",          UnorderedIOTest},
-        {"read_only",             ReadOnlyTest},
+        {"write_only",            UnorderedWriteTest},
+        {"read_only",             UnorderedReadTest},
         {"ordered_writer",        OrderedFileWriterTest},
         {"rand_read",             RandomReadTest},
         {"large_read",            LargeReadTest},
         {"sorting_in_memory",     InMemorySortingTest},
         {"permutation_in_memory", InMemoryPermutationTest},
         {"reduce_in_memory",      InMemoryReduceTest},
+        {"map_in_memory",         InMemoryMapTest},
         {"scatter_gather_nop",    ScatterGatherNopTest},
         {"scatter_gather_no_io",  ScatterGatherNoIOTest},
-        {"map_in_memory",         InMemoryMapTest},
         {"aligned_alloc",         AlignedAllocTest}};
 
 int main(int argc, char **argv) {
