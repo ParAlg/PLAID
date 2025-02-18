@@ -35,9 +35,9 @@ cc_binary(
     name = "speed_test",
     srcs = ["speed-test.cpp"],
     deps = [
+        "//benchmarks:distribution_benchmarks",
         "//benchmarks:in_memory_benchmarks",
         "//benchmarks:io_benchmarks",
-        "//scatter_gather_algorithms:scatter_gather_nop",
         "//utils:aligned_type_allocator",
         "//utils:command_line",
         "//utils:io_utils",
