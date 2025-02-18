@@ -1,3 +1,3 @@
 for i in {0..29}; do
-  fstrim "/mnt/ssd${i}"
+  fstrim -v "/mnt/ssd${i}"
 done
