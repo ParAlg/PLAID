@@ -62,6 +62,10 @@ int main(int argc, char **argv) {
         usage:
         std::cout << "Usage: " << argv[0] << " "
                   << "<which test to perform> <test-specific arguments>\n";
+        std::cout << "Available tests: \n";
+        for (const auto& [test_name, _] : test_functions) {
+            std::cout << "  " << test_name << "\n";
+        }
         return 0;
     }
     std::string test_name(argv[1]);

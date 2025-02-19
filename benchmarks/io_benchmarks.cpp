@@ -9,32 +9,12 @@
 #include "utils/unordered_file_reader.h"
 #include "utils/ordered_file_writer.h"
 #include "utils/command_line.h"
-#include "scatter_gather_algorithms/nop.h"
 #include "parlay/random.h"
 #include "parlay/primitives.h"
 #include "absl/log/log.h"
 #include "utils/random_read.h"
 
 const size_t SINGLE_IO_SIZE = 4 * (1UL << 20);
-
-template<typename T>
-void WriteFiles(const std::string &prefix, size_t n_bytes, size_t single_write_size) {
-    UnorderedFileWriter<T> writer(prefix, 128, 2);
-    size_t total_write_size = n_bytes;
-    LOG(INFO) << "Preparing data";
-    auto array = std::shared_ptr<T>(
-            (T *) aligned_alloc(O_DIRECT_MULTIPLE, single_write_size), free);
-    for (size_t i = 0; i < single_write_size / sizeof(T); i++) {
-        array.get()[i] = i * i - 5 * i - 1;
-    }
-    LOG(INFO) << "Starting writer loop";
-    for (size_t i = 0; i < total_write_size / single_write_size; i++) {
-        writer.Push(array, single_write_size / sizeof(T));
-    }
-    LOG(INFO) << "Waiting for completion";
-    writer.Wait();
-    LOG(INFO) << "Files written";
-}
 
 void OrderedFileWriterTest(int argc, char **argv) {
     struct WriterData {
@@ -110,7 +90,19 @@ void UnorderedWriteTest(int argc, char **argv) {
     const size_t TOTAL_WRITE_SIZE = 1UL << ParseLong(argv[3]);
     parlay::internal::timer timer("Unordered write");
     timer.next("experiment start");
-    WriteFiles<Type>(prefix, TOTAL_WRITE_SIZE, SINGLE_IO_SIZE);
+    UnorderedFileWriter<Type> writer(prefix, 64, 2);
+    timer.next("preparing writes");
+    size_t totalWriteSize = TOTAL_WRITE_SIZE;
+    auto array = std::shared_ptr<Type>(
+            (Type *) aligned_alloc(O_DIRECT_MULTIPLE, SINGLE_IO_SIZE), free);
+    for (size_t i = 0; i < SINGLE_IO_SIZE / sizeof(Type); i++) {
+        array.get()[i] = (Type)(i * i - 5 * i - 1);
+    }
+    timer.next("starting to write");
+    for (size_t i = 0; i < totalWriteSize / SINGLE_IO_SIZE; i++) {
+        writer.Push(array, SINGLE_IO_SIZE / sizeof(Type));
+    }
+    writer.Wait();
     timer.next("DONE");
 }
 

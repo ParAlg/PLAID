@@ -5,7 +5,6 @@ cc_library(
     srcs = ["io_benchmarks.cpp"],
     hdrs = ["io_benchmarks.h"],
     deps = [
-        "//scatter_gather_algorithms:scatter_gather_nop",
         "//utils:command_line",
         "//utils:io_utils",
         "//utils:random_read",
