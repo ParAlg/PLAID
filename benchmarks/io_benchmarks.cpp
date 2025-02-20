@@ -54,7 +54,7 @@ void OrderedFileWriterTest(int argc, char **argv) {
 }
 
 void UnorderedReadTest(int argc, char **argv) {
-    CHECK(argc > 3) << "Usage: " << argv[0] << " " << argv[1] << " <file prefix>";
+    CHECK(argc > 2) << "Usage: " << argv[0] << " " << argv[1] << " <file prefix>";
     using Type = long long;
     parlay::internal::timer timer("Unordered read");
     auto files = FindFiles(std::string(argv[2]));
@@ -69,7 +69,12 @@ void UnorderedReadTest(int argc, char **argv) {
     reader.PrepFiles(files);
     // FIXME: allocator is the bottleneck.
     //  jemalloc performs worse than glibc (1/3) while mimalloc is much faster.
-    reader.Start(1 << 20, 128, 128, 4);
+    size_t io_uring_size = ParseLong(argv[3]);
+    size_t num_io_threads = ParseLong(argv[4]);
+    reader.Start(1 << 20,
+                 io_uring_size * 2,
+                 io_uring_size,
+                 num_io_threads);
     while (true) {
         auto [ptr, size, _, _2] = reader.Poll();
         if (ptr == nullptr || size == 0) {

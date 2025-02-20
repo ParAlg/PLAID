@@ -15,7 +15,7 @@
 
 void AlignedAllocTest(int argc, char **argv) {
     parlay::internal::timer timer;
-    const size_t NUM_ALLOCATIONS = 10000, SIZE = 4 << 20;
+    const size_t NUM_ALLOCATIONS = 100000, SIZE = 4 << 20;
     for (size_t alignment: {64, 512, 4096}) {
         LOG(INFO) << "Using alignment " << alignment;
         for (int rep = 0; rep < 3; rep++) {
