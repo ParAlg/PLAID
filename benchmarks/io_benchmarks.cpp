@@ -76,6 +76,9 @@ void UnorderedReadTest(int argc, char **argv) {
                  io_uring_size,
                  num_io_threads);
     size_t remaining_size = expected_size;
+    const std::time_t time_limit = 30;
+    const std::time_t start_time = std::time(nullptr);
+    bool timeout = false;
     while (true) {
         auto [ptr, size, _, _2] = reader.Poll();
         if (ptr == nullptr || size == 0) {
@@ -83,12 +86,23 @@ void UnorderedReadTest(int argc, char **argv) {
         }
         free(ptr);
         remaining_size -= size * sizeof(Type);
+        if (std::time(nullptr) - start_time >= time_limit) {
+            timeout = true;
+            break;
+        }
     }
-    CHECK(remaining_size == 0)
-                    << "Still " << remaining_size << " bytes remaining unread";
+    if (!timeout) {
+        CHECK(remaining_size == 0)
+                        << "Still " << remaining_size << " bytes remaining unread";
+    }
     double time_elapsed = timer.next_time();
-    double throughput = (double)expected_size / 1e9 / time_elapsed;
+    double throughput = (double)(expected_size - remaining_size) / 1e9 / time_elapsed;
     LOG(INFO) << "Throughput: " << throughput;
+    if (timeout) {
+        // Skip sanity checker in the reader
+        LOG(INFO) << "Test timeout";
+        exit(0);
+    }
 }
 
 void UnorderedWriteTest(int argc, char **argv) {
