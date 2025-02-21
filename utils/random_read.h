@@ -78,7 +78,7 @@ parlay::sequence<T> RandomBatchRead(const std::vector<FileInfo> &files,
                 free_buffers.pop_back();
                 buffers[buffer_index].offset = byte_offset - start;
                 auto file_num = std::upper_bound(size_prefix_sum, size_prefix_sum + num_files, start) - size_prefix_sum;
-                CHECK(file_num < num_files);
+                CHECK((size_t)file_num < num_files);
                 struct io_uring_sqe *sqe = io_uring_get_sqe(&ring);
                 io_uring_prep_read(sqe, fds[file_num], buffers[buffer_index].buffer, end - start,
                                    file_num == 0 ? start : start - size_prefix_sum[file_num - 1]);

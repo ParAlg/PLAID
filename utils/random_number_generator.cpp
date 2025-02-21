@@ -42,6 +42,7 @@ parlay::sequence<T> GenerateZipfianDistribution(size_t n, double s) {
     double v = n / sum;
     parlay::sequence<size_t> nums(cutoff + 1, 0);
     parlay::parallel_for(0, cutoff, [&](size_t i) { nums[i] = (T) std::max(1.0, v / std::pow(i + 1, s)); });
+    [[maybe_unused]]
     size_t tot = parlay::scan_inplace(make_slice(nums));
     assert(tot >= n);
     parlay::sequence<T> seq(n);
