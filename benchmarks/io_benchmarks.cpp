@@ -75,17 +75,20 @@ void UnorderedReadTest(int argc, char **argv) {
                  io_uring_size * 2,
                  io_uring_size,
                  num_io_threads);
+    size_t remaining_size = expected_size;
     while (true) {
         auto [ptr, size, _, _2] = reader.Poll();
         if (ptr == nullptr || size == 0) {
             break;
         }
         free(ptr);
-        expected_size -= size * sizeof(Type);
+        remaining_size -= size * sizeof(Type);
     }
-    CHECK(expected_size == 0)
-                    << "Still " << expected_size << " bytes remaining unread";
-    timer.next("DONE");
+    CHECK(remaining_size == 0)
+                    << "Still " << remaining_size << " bytes remaining unread";
+    double time_elapsed = timer.next_time();
+    double throughput = (double)expected_size / 1e9 / time_elapsed;
+    LOG(INFO) << "Throughput: " << throughput;
 }
 
 void UnorderedWriteTest(int argc, char **argv) {
@@ -95,7 +98,9 @@ void UnorderedWriteTest(int argc, char **argv) {
     const size_t TOTAL_WRITE_SIZE = 1UL << ParseLong(argv[3]);
     parlay::internal::timer timer("Unordered write");
     timer.next("experiment start");
-    UnorderedFileWriter<Type> writer(prefix, 64, 2);
+    size_t io_uring_size = ParseLong(argv[4]);
+    size_t num_io_threads = ParseLong(argv[5]);
+    UnorderedFileWriter<Type> writer(prefix, io_uring_size, num_io_threads);
     timer.next("preparing writes");
     size_t totalWriteSize = TOTAL_WRITE_SIZE;
     auto array = std::shared_ptr<Type>(
@@ -108,7 +113,9 @@ void UnorderedWriteTest(int argc, char **argv) {
         writer.Push(array, SINGLE_IO_SIZE / sizeof(Type));
     }
     writer.Wait();
-    timer.next("DONE");
+    double time_elapsed = timer.next_time();
+    double throughput = (double)TOTAL_WRITE_SIZE / 1e9 / time_elapsed;
+    LOG(INFO) << "Throughput: " << throughput;
 }
 
 void RandomReadTest(int argc, char **argv) {

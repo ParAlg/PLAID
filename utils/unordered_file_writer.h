@@ -156,6 +156,7 @@ private:
         size_t current_file = 0;
         size_t outstanding_request = 0;
         size_t sqe_unavailable_count = 0;
+        size_t max_outstanding_requests = io_uring_size * 2;
 
         // FIXME: do we need to acquire a mutex for the second check?
         Phase phase = NORMAL;
@@ -165,7 +166,7 @@ private:
                 struct io_uring_cqe *cqe;
                 int wait_result = io_uring_peek_cqe(&ring, &cqe);
                 if (wait_result != 0) {
-                    if (outstanding_request >= io_uring_size || phase == WAITING_FOR_COMPLETION) {
+                    if (outstanding_request >= max_outstanding_requests || phase == WAITING_FOR_COMPLETION) {
                         wait_result = io_uring_wait_cqe(&ring, &cqe);
                     }
                 }
@@ -189,7 +190,8 @@ private:
                 continue;
             }
             bool submit_write = false;
-            while (outstanding_request < io_uring_size) {
+            size_t requests_in_queue = 0;
+            while (outstanding_request < max_outstanding_requests && requests_in_queue < io_uring_size) {
                 auto *request = writer->Poll();
                 if (request->size == 0) {
                     phase = WAITING_FOR_COMPLETION;
@@ -227,10 +229,12 @@ private:
                 io_uring_sqe_set_data(sqe, request);
                 submit_write = true;
                 outstanding_request++;
+                requests_in_queue++;
             }
             if (submit_write) {
                 SYSCALL(io_uring_submit(&ring));
             }
+            requests_in_queue = 0;
         }
         if (sqe_unavailable_count > 0) {
             [[unlikely]];
