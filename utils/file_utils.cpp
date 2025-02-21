@@ -36,8 +36,12 @@ using std::filesystem::path;
             auto path_str = dir_entry.path().string();
             size_t index = path_str.find("/" + prefix);
             if (index != std::string::npos) {
-                // true_size is 0 since we don't know it
-                size_t file_index = std::stol(path_str.substr(index + 1 + prefix.size()));
+                size_t file_index = 0;
+                // Usually the part after the prefix is the index, but if it's empty, we just ignore it.
+                auto index_substring = path_str.substr(index + 1 + prefix.size());
+                if (!index_substring.empty()) {
+                    file_index = std::stol(index_substring);
+                }
                 result.emplace_back(path_str, file_index, 0, dir_entry.file_size());
             }
         }

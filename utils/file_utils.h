@@ -16,6 +16,10 @@ void GetFileInfo(std::vector<FileInfo> &info, bool eof_marker = false, bool comp
 
 void ComputeBeforeSize(std::vector<FileInfo> &files);
 
+inline size_t AlignDown(size_t original, size_t alignment) {
+    return original / alignment * alignment;
+}
+
 /**
  * Ensure that a byte offset conforms to disk alignment requirements by rounding down.
  * For example, 4098 would become 4096 if O_DIRECT_MULTIPLE is set to 4096.

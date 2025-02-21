@@ -29,7 +29,7 @@ parlay::sequence<T> RandomBatchRead(const std::vector<FileInfo> &files,
         size_prefix_sum[i] = files[i].true_size + prev;
         if (files[i].true_size == 0) {
             [[unlikely]];
-            LOG(ERROR) << "File's true size is not determined or an empty file is passed.";
+            LOG(ERROR) << "File's true size is not determined or an empty file is passed: " << files[i].file_name;
         }
     }
 
@@ -42,6 +42,7 @@ parlay::sequence<T> RandomBatchRead(const std::vector<FileInfo> &files,
     int fds[num_files];
     parlay::parallel_for(0, num_files, [&](size_t i) {
         fds[i] = open(files[i].file_name.c_str(), O_RDONLY | O_DIRECT);
+        SYSCALL(fds[i]);
     }, 1);
 
     const size_t segment_size = (requests.size() + THREAD_COUNT - 1) / THREAD_COUNT;
@@ -71,11 +72,13 @@ parlay::sequence<T> RandomBatchRead(const std::vector<FileInfo> &files,
             // there are available buffers and remaining requests; keep submitting
             while (i < segment_end && !free_buffers.empty()) {
                 auto byte_offset = requests[i] * sizeof(T);
+                // Start and end of aligned read (both multiples of O_DIRECT_MULTIPLE)
                 size_t start = AlignDown(byte_offset), end = AlignUp(byte_offset + sizeof(T));
                 size_t buffer_index = free_buffers.back();
                 free_buffers.pop_back();
                 buffers[buffer_index].offset = byte_offset - start;
                 auto file_num = std::upper_bound(size_prefix_sum, size_prefix_sum + num_files, start) - size_prefix_sum;
+                CHECK(file_num < num_files);
                 struct io_uring_sqe *sqe = io_uring_get_sqe(&ring);
                 io_uring_prep_read(sqe, fds[file_num], buffers[buffer_index].buffer, end - start,
                                    file_num == 0 ? start : start - size_prefix_sum[file_num - 1]);

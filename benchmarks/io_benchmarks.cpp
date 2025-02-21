@@ -119,60 +119,39 @@ void UnorderedWriteTest(int argc, char **argv) {
 }
 
 void RandomReadTest(int argc, char **argv) {
+    using Type = uint64_t;
     if (argc < 4) {
-        std::cout << "Need arguments for number of elements and number of queries\n";
+        std::cout << argv[0] << " " << argv[1] << " <file prefix> <num reads>";
         return;
     }
-    size_t n = 1UL << std::strtol(argv[2], nullptr, 10),
-            m = 1UL << std::strtol(argv[3], nullptr, 10);
+    std::string prefix(argv[2]);
+    size_t n = ParseLong(argv[3]);
     parlay::internal::timer timer("random read");
 
     std::random_device rd;
-    auto file_name = GetFileName("random_read_test", rd());
-    LOG(INFO) << "Using " << file_name;
-    size_t buffer_size = sizeof(size_t) * n;
-    auto *buffer =
-            static_cast<size_t *>(aligned_alloc(O_DIRECT_MULTIPLE, buffer_size));
-    for (size_t i = 0; i < n; i++) {
-        buffer[i] = i;
+    auto files = FindFiles(prefix);
+    GetFileInfo(files);
+    CHECK(!files.empty()) << "No file with prefix " << prefix << " found";
+    size_t total_size = 0;
+    for (auto & file : files) {
+        total_size += file.true_size;
     }
-    int fd = open(file_name.c_str(), O_WRONLY | O_CREAT | O_DIRECT, 0744);
-    size_t bytes_written = 0;
-    while (bytes_written < buffer_size) {
-        size_t result = write(fd, (unsigned char *) buffer + bytes_written,
-                              buffer_size - bytes_written);
-        SYSCALL(result);
-        bytes_written += result;
-    }
-    close(fd);
-    free(buffer);
-
-    timer.next("File setup complete.");
 
     parlay::random_generator gen;
-    std::uniform_int_distribution<size_t> dis(0, n - 1);
-    parlay::sequence<size_t> queries =
-            parlay::map(parlay::iota(m), [&](size_t i) {
+    std::uniform_int_distribution<size_t> dis_file(0, total_size - 1);
+    auto queries =
+            parlay::tabulate(n, [&](size_t i) -> size_t {
                 auto g = gen[i];
-                return dis(g);
+                auto index = dis_file(g) % (total_size / sizeof(Type));
+                return index;
             });
     timer.next("Begin random read");
-    auto result = RandomBatchRead<size_t>(
-            {FileInfo(file_name, 0, buffer_size, buffer_size)}, queries);
-    timer.next("Random read completed");
-    std::sort(result.begin(), result.end());
-    auto expected = parlay::sort(queries);
-    size_t num_mismatches = 0;
-    for (size_t i = 0; i < m; i++) {
-        if (result[i] != expected[i]) {
-            LOG(ERROR) << "Mismatch at index " << i << ": expected " << expected[i]
-                       << ", found " << result[i];
-            num_mismatches++;
-            if (num_mismatches >= 20) {
-                break;
-            }
-        }
-    }
+    auto result = RandomBatchRead<Type>(files, queries);
+    double time = timer.next_time();
+    LOG(INFO) << "Spent " << time << " seconds to read " << n << " elements of size " << sizeof(Type);
+    double throughput = (double)(n * O_DIRECT_MULTIPLE / 1e9) / time;
+    double iops = (double)n / time;
+    LOG(INFO) << "Throughput (inc. wasted bandwidth): " << throughput << " GB/s. IOPS: " << iops;
 }
 
 void LargeReadTest(int argc, char **argv) {
