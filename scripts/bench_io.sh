@@ -16,7 +16,8 @@ for ssd_count in $(seq "$1" "$2"); do
   sleep 30
 #  num_threads=$(( ("$ssd_count" + 2) / 3 ))
   num_threads="$ssd_count"
-  "${executable}" "--num_ssd=${ssd_count}" "--ssd_selection=r" "$workload" "$file_prefix" "$data_size" 4 "$num_threads" > "temp.txt" 2>&1
+  ssds=$(python scripts/ssd_assignment.py "$ssd_count")
+  "${executable}" "--ssd=$ssds" "$workload" "$file_prefix" "$data_size" 4 "$num_threads" > "temp.txt" 2>&1
   printf "%s," "${ssd_count}" >> "result.txt"
   grep "Throughput" "temp.txt" | sed -e "s/^.*Throughput: \([0-9.]\+\)$/\1,/" >> "result.txt"
 done
