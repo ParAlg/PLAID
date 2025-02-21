@@ -11,9 +11,12 @@ workload="write_only"
 
 for ssd_count in $(seq "$1" "$2"); do
   echo "Testing with ${ssd_count} random SSDs"
-  bash scripts/clear.sh
-  sudo bash scripts/fstrim.sh
-  sleep 30
+  # Only need to reset SSDs and perform fstrim when we are writing
+  if [[ $workload == *"write"* ]]; then
+    bash scripts/clear.sh
+    sudo bash scripts/fstrim.sh
+    sleep 30
+  fi
 #  num_threads=$(( ("$ssd_count" + 2) / 3 ))
   num_threads="$ssd_count"
   ssds=$(python scripts/ssd_assignment.py "$ssd_count")
