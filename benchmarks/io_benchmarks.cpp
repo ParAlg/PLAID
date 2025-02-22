@@ -165,7 +165,8 @@ void RandomReadTest(int argc, char **argv) {
     LOG(INFO) << "Spent " << time << " seconds to read " << n << " elements of size " << sizeof(Type);
     double throughput = (double)(n * O_DIRECT_MULTIPLE / 1e9) / time;
     double iops = (double)n / time;
-    LOG(INFO) << "Throughput (inc. wasted bandwidth): " << throughput << " GB/s. IOPS: " << iops;
+    std::cout.precision(10);
+    std::cout << "Throughput (inc. wasted bandwidth): " << throughput << " GB/s. IOPS: " << iops;
 }
 
 void LargeReadTest(int argc, char **argv) {
