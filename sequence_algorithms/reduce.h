@@ -17,9 +17,10 @@
 
 template <typename T, typename R = T, typename Monoid>
 R Reduce(std::vector<FileInfo> files, Monoid monoid) {
-    UnorderedFileReader<T> reader;
+    using Reader = UnorderedFileReader<T, READER_READ_SIZE>;
+    Reader reader;
     reader.PrepFiles(files);
-    reader.Start(1 << 20, 64, 64, 2);
+    reader.Start(64, 32, 4);
     return parlay::reduce(parlay::map(parlay::iota(parlay::num_workers()), [&](size_t worker_index) {
         R result = monoid.identity;
         while (true) {
@@ -30,7 +31,7 @@ R Reduce(std::vector<FileInfo> files, Monoid monoid) {
             for (size_t i = 0; i < n; i++) {
                 result = monoid(result, ptr[i]);
             }
-            free(ptr);
+            Reader::ReaderAllocator::free(reinterpret_cast<typename Reader::ReaderData*>(ptr));
         }
         return result;
     }, 1), monoid);

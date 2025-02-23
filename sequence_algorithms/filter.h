@@ -23,9 +23,9 @@ FileInfo FilterFile(const FileInfo &in_file, const std::string &out_file, const 
     const auto cmp = [](QueueData a, QueueData b) {
         return a.index > b.index;
     };
-    UnorderedFileReader<T> reader;
+    UnorderedFileReader<T, READER_READ_SIZE> reader;
     reader.PrepFiles({in_file});
-    reader.Start(1 << 20, 4, 4, 1);
+    reader.Start();
     UnorderedFileWriter<T> writer(out_file, 4, 1);
     std::priority_queue<QueueData, std::vector<QueueData>, decltype(cmp)> queue(cmp);
     constexpr size_t buffer_size_bytes = 4 << 20, buffer_size = buffer_size_bytes / sizeof(T);

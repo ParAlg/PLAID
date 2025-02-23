@@ -12,9 +12,10 @@
 
 template <typename T, typename R = T>
 void Map(std::vector<FileInfo> files, std::string result_prefix, std::function<R(T)> f) {
-    UnorderedFileReader<T> reader;
+    using Reader = UnorderedFileReader<T, READER_READ_SIZE>;
+    Reader reader;
     reader.PrepFiles(files);
-    reader.Start(1 << 20, 64, 64, 2);
+    reader.Start(32, 16, 4);
     UnorderedFileWriter<R> writer(result_prefix, 64, 2, files.size());
     parlay::parallel_for(0, parlay::num_workers(), [&](size_t _) {
         while (true) {
@@ -33,7 +34,7 @@ void Map(std::vector<FileInfo> files, std::string result_prefix, std::function<R
                 for (size_t i = 0; i < n; i++) {
                     result[i] = f(ptr[i]);
                 }
-                free(ptr);
+                Reader::ReaderAllocator::free(reinterpret_cast<typename Reader::ReaderData *>(ptr));
             }
             writer.Push(std::shared_ptr<R>(result, free), n, file_index, element_index * sizeof(R));
         }

@@ -34,9 +34,10 @@ public:
 
 private:
 
-    struct BucketData {
-        char data[SAMPLE_SORT_BUCKET_SIZE];
-    };
+    using ReaderData = AllocatorData<READER_READ_SIZE>;
+    using reader_allocator = AlignedTypeAllocator<ReaderData, O_DIRECT_MULTIPLE>;
+
+    using BucketData = AllocatorData<SAMPLE_SORT_BUCKET_SIZE>;
     using bucket_allocator = AlignedTypeAllocator<BucketData, O_DIRECT_MULTIPLE>;
 
     /**
@@ -82,7 +83,7 @@ private:
                     buckets[bucket_index] = (T *) bucket_allocator::alloc();
                 }
             }
-            free(data);
+            reader_allocator::free((ReaderData *)data);
         }
         // cleanup partially full buckets
         for (size_t i = 0; i < num_buckets; i++) {
@@ -118,7 +119,7 @@ private:
     }
 
     // reader for the input files
-    UnorderedFileReader<T> reader;
+    UnorderedFileReader<T, READER_READ_SIZE> reader;
     // writer to handle all the buckets created in phase 1 of sample sort
     OrderedFileWriter<T, SAMPLE_SORT_BUCKET_SIZE> intermediate_writer;
 
