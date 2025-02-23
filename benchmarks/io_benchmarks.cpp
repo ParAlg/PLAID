@@ -17,9 +17,7 @@
 const size_t SINGLE_IO_SIZE = 4 * (1UL << 20);
 
 void OrderedFileWriterTest(int argc, char **argv) {
-    struct WriterData {
-        unsigned char data[SAMPLE_SORT_BUCKET_SIZE];
-    };
+    using WriterData = AllocatorData<SAMPLE_SORT_BUCKET_SIZE>;
     using Allocator = AlignedTypeAllocator<WriterData, O_DIRECT_MULTIPLE>;
 
     CHECK(argc > 3) << "Expected an argument on total write size and number of buckets";

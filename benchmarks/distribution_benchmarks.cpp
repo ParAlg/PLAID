@@ -14,11 +14,13 @@ void ScatterGatherNopTest(int argc, char **argv) {
     ScatterGatherNop<size_t>(input_prefix, num_buckets);
 }
 
+constexpr size_t READER_DATA_SIZE = 4 << 20;
+using ReaderData = AllocatorData<READER_DATA_SIZE>;
+using reader_bucket_allocator = AlignedTypeAllocator<ReaderData, O_DIRECT_MULTIPLE>;
+
 template<typename T>
 void ScatterGatherThread(size_t num_buckets, const std::function<std::pair<T *, size_t>()> &f) {
-    struct BucketData {
-        char a[SAMPLE_SORT_BUCKET_SIZE];
-    };
+    using BucketData = AllocatorData<SAMPLE_SORT_BUCKET_SIZE>;
     using bucket_allocator = AlignedTypeAllocator<BucketData, O_DIRECT_MULTIPLE>;
     size_t buffer_size = SAMPLE_SORT_BUCKET_SIZE / sizeof(T);
     // each bucket stores a pointer to an array, which will hold temporary values in that bucket
@@ -43,23 +45,24 @@ void ScatterGatherThread(size_t num_buckets, const std::function<std::pair<T *, 
                 buckets[bucket_index] = (T *) bucket_allocator::alloc();
             }
         }
-        free(data);
+        reader_bucket_allocator::free((ReaderData *)data);
     }
 }
 
 void ScatterGatherNoIOTest(int argc, char **argv) {
     using T = size_t;
+    CHECK(argc == 4) << "Usage: " << argv[0] << " " << argv[1] << " <size (pow of 2)> <num buckets>";
     size_t size = 1ULL << ParseLong(argv[2]);
     size_t num_buckets = ParseLong(argv[3]);
     size_t n = size / sizeof(T);
-    size_t num_elements_per_pointer = 1 << 20;
+    size_t num_elements_per_pointer = READER_DATA_SIZE / sizeof(T);
     size_t num_pointers = n / num_elements_per_pointer;
-    size_t size_per_pointer = size / num_pointers;
+    size_t size_per_pointer = READER_DATA_SIZE;
     T *pointers[num_pointers];
     parlay::internal::timer timer("Scatter gather no IO");
     parlay::parallel_for(0, num_pointers, [&](size_t i) {
         auto seq = RandomSequence<T>(num_elements_per_pointer);
-        pointers[i] = (T *) aligned_alloc(O_DIRECT_MULTIPLE, size_per_pointer);
+        pointers[i] = (T *) reader_bucket_allocator::alloc();
         memcpy(pointers[i], seq.data(), size_per_pointer);
     });
     size_t cur = 0;
@@ -79,5 +82,7 @@ void ScatterGatherNoIOTest(int argc, char **argv) {
     parlay::parallel_for(0, parlay::num_workers(), [&](size_t i) {
         ScatterGatherThread<T>(num_buckets, generator);
     }, 1);
-    timer.next("All done");
+    double time = timer.next_time();
+    double throughput = (double)size / 1e9 / time;
+    std::cout << "Throughput: " << throughput << '\n';
 }
