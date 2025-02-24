@@ -178,9 +178,12 @@ public:
             auto seq = parlay::make_slice(ptr, ptr + n);
             parlay::sort_inplace(seq, comp);
         };
-        auto results = scatter_gather.Run(input_files, result_prefix, num_samples + 1,
+        ScatterGatherConfig config;
+        config.bucketed_writer_config.num_buckets = num_samples + 1;
+        auto results = scatter_gather.Run(input_files, result_prefix,
                                           assigner.GetAssigner(),
-                                          simple_processor);
+                                          simple_processor,
+                                          config);
         timer.next("Sorting complete");
         timer.stop();
         return {results.begin(), results.end()};

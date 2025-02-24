@@ -16,10 +16,13 @@ void ScatterGatherNopTest(int argc, char **argv) {
     timer.next("Start experiment");
     ScatterGather<Type> scatter_gather;
     auto files = FindFiles(input_prefix);
-    scatter_gather.Run(files, "results", num_buckets,
+    ScatterGatherConfig config;
+    config.bucketed_writer_config.num_buckets = num_buckets;
+    config.benchmark_mode = true;
+    scatter_gather.Run(files, "results",
                        [=](size_t x, size_t index) {return (x + index) % num_buckets;},
                        [](size_t** ptr, size_t length) {return;},
-                       5);
+                       config);
     double time = timer.next_time();
     size_t size = 0;
     for (const auto& file : files) {
@@ -57,6 +60,7 @@ void ScatterGatherThread(size_t num_buckets, const std::function<std::pair<T *, 
                 buckets[bucket_index] = (T *) bucket_allocator::alloc();
             }
         }
+        // FIXME: every free triggers a munmap, which significantly slows things down
         // free(data);
     }
 }

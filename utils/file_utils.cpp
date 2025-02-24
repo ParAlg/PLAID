@@ -239,3 +239,11 @@ void MakeFileEndMarker(unsigned char *buffer, size_t size, size_t real_size) {
     CHECK(byte_diff < capacity);
     *(uint16_t*)(&buffer[size - METADATA_SIZE]) = (uint16_t)byte_diff;
 }
+
+double GetThroughput(const std::vector<FileInfo> &files, double time) {
+    size_t size = 0;
+    for (const auto &f : files) {
+        size += f.true_size == 0 ? f.file_size : f.true_size;
+    }
+    return ((double) size / 1e9) / time;
+}

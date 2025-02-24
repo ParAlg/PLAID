@@ -5,7 +5,6 @@ bazel build -c opt "//:speed_test"
 executable="./bazel-bin/speed_test"
 workload="scatter_gather_nop"
 
-# FIXME: unfinished script
 for i in {30..40}; do
   "${executable}" "$workload" 37 "$num_buckets" > "temp.txt" 2>&1
   printf "%s," "$num_buckets" >> "result.txt"

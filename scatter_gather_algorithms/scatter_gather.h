@@ -20,6 +20,24 @@
 #include "utils/ordered_file_writer.h"
 #include "utils/type_allocator.h"
 
+struct UnorderedReaderConfig {
+    size_t num_threads = 2;
+    size_t max_requests = 64;
+    size_t queue_depth = 32;
+};
+
+struct BucketedWriterConfig {
+    size_t num_threads = 5;
+    // Need to be explicitly specified.
+    size_t num_buckets = -1;
+};
+
+struct ScatterGatherConfig {
+    UnorderedReaderConfig reader_config;
+    BucketedWriterConfig bucketed_writer_config;
+    // Prints detailed performance statistics
+    bool benchmark_mode = false;
+};
 
 /**
  * Perform external memory sample sort
@@ -58,8 +76,6 @@ private:
         T *buckets[num_buckets];
         unsigned int buffer_index[num_buckets];
         for (size_t i = 0; i < num_buckets; i++) {
-//            // may need posix_memalign since writev under O_DIRECT expects pointers to be aligned as well
-//            posix_memalign((void**)&buckets[i], O_DIRECT_MULTIPLE, buffer_size * sizeof(T));
             buckets[i] = (T *) bucket_allocator::alloc();
             buffer_index[i] = 0;
         }
@@ -69,7 +85,6 @@ private:
                 break;
             }
             const size_t index_start = files[file_index].before_size + data_index;
-            // TODO: sort chunk in memory and then interleave samples with it
             for (size_t i = 0; i < size; i++) {
                 // use binary search to find which bucket it belongs to
                 size_t bucket_index = assigner(data[i], index_start + i);
@@ -304,17 +319,18 @@ public:
 
     std::vector<FileInfo> Run(std::vector<FileInfo> &input_files,
                               const std::string &result_prefix,
-                              size_t num_buckets,
                               const AssignerFunction assigner,
                               const ProcessorFunction processor,
-                              size_t intermedia_io_threads = 2) {
+                              const ScatterGatherConfig &config) {
         parlay::internal::timer timer("Scatter gather internal", true);
         reader.PrepFiles(input_files);
         reader.Start();
         // FIXME: change this file name to a different one (possibly randomized?)
+        size_t num_buckets = config.bucketed_writer_config.num_buckets;
         intermediate_writer.Initialize("spfx_", num_buckets, 1 << 20);
         timer.next("Start phase 1 (assign to buckets)");
         std::vector<FileInfo> bucket_list;
+        auto intermedia_io_threads = config.bucketed_writer_config.num_threads;
         CHECK(intermedia_io_threads < parlay::num_workers());
         parlay::par_do([&]() {
             parlay::parallel_for(0, intermedia_io_threads, [&](size_t i) {
@@ -328,9 +344,20 @@ public:
             bucket_list = intermediate_writer.ReapResult();
         });
         bucket_allocator::finish();
-        timer.next("After assign to bucket and before phase 2");
+        // Print detailed statistics under benchmark mode, otherwise just print the time
+        if (config.benchmark_mode) {
+            double throughput = GetThroughput(input_files, timer.next_time());
+            std::cout << "Throughput: " << throughput << "GB\n";
+        } else {
+            timer.next("After assign to bucket and before phase 2");
+        }
         parlay::sequence<FileInfo> results = WorkerOnlyPhase2(result_prefix, processor, bucket_list);
-        timer.next("Scatter gather complete");
+        if (config.benchmark_mode) {
+            double throughput = GetThroughput(input_files, timer.next_time());
+            std::cout << "Throughput: " << throughput << "GB\n";
+        } else {
+            timer.next("After assign to bucket and before phase 2");
+        }
         timer.stop();
         return {results.begin(), results.end()};
     }

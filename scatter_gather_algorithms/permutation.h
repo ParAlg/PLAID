@@ -68,10 +68,12 @@ public:
             parlay::random_shuffle(seq);
         };
         timer.next("Permutation prep done. Calling scatter gather.");
-        auto results = scatter_gather.Run(input_files, result_prefix, num_buckets + 1,
+        ScatterGatherConfig config;
+        config.bucketed_writer_config.num_buckets = num_buckets + 1;
+        auto results = scatter_gather.Run(input_files, result_prefix,
                                           simple_assigner,
                                           simple_processor,
-                                          4);
+                                          config);
         timer.next("Permutation complete");
         timer.stop();
         return {results.begin(), results.end()};
