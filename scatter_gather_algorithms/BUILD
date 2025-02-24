@@ -28,6 +28,7 @@ cc_library(
 cc_library(
     name = "scatter_gather",
     srcs = ["scatter_gather.h"],
+    visibility = ["//visibility:public"],
     deps = [
         "//:config",
         "//utils:aligned_type_allocator",
@@ -35,15 +36,5 @@ cc_library(
         "//utils:logger",
         "@parlaylib//parlay:primitives",
         "@parlaylib//parlay/internal:get_time",
-    ],
-)
-
-cc_library(
-    name = "scatter_gather_nop",
-    srcs = ["nop.h"],
-    visibility = ["//visibility:public"],
-    deps = [
-        ":scatter_gather",
-        "//utils:io_utils",
     ],
 )

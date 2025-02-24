@@ -3,15 +3,29 @@
 //
 #include "utils/command_line.h"
 #include "absl/log/check.h"
-#include "scatter_gather_algorithms/nop.h"
 #include "utils/random_number_generator.h"
+#include "scatter_gather_algorithms/scatter_gather.h"
 
 void ScatterGatherNopTest(int argc, char **argv) {
     CHECK(argc == 4) << "Usage: " << argv[0] << " " << argv[1]
                      << " <prefix> <bucket size>";
+    using Type = size_t;
+    parlay::internal::timer timer;
     std::string input_prefix(argv[2]);
     int num_buckets = (int) ParseLong(argv[3]);
-    ScatterGatherNop<size_t>(input_prefix, num_buckets);
+    timer.next("Start experiment");
+    ScatterGather<Type> scatter_gather;
+    auto files = FindFiles(input_prefix);
+    scatter_gather.Run(files, "results", num_buckets,
+                       [=](size_t x, size_t index) {return (x + index) % num_buckets;},
+                       [](size_t** ptr, size_t length) {return;},
+                       5);
+    double time = timer.next_time();
+    size_t size = 0;
+    for (const auto& file : files) {
+        size += file.file_size;
+    }
+    std::cout << ((double)size / 1e9) / time << '\n';
 }
 
 template<typename T>
@@ -43,7 +57,7 @@ void ScatterGatherThread(size_t num_buckets, const std::function<std::pair<T *, 
                 buckets[bucket_index] = (T *) bucket_allocator::alloc();
             }
         }
-        free(data);
+        // free(data);
     }
 }
 
@@ -79,5 +93,7 @@ void ScatterGatherNoIOTest(int argc, char **argv) {
     parlay::parallel_for(0, parlay::num_workers(), [&](size_t i) {
         ScatterGatherThread<T>(num_buckets, generator);
     }, 1);
-    timer.next("All done");
+    double time = timer.next_time();
+    double throughput = (double)size / 1e9 / time;
+    std::cout << "Throughput: " << throughput << '\n';
 }
