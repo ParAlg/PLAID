@@ -38,6 +38,27 @@ void AlignedAllocTest(int argc, char **argv) {
     }
 }
 
+#include <malloc.h>
+void MmapTest(int argc, char **argv) {
+    // This should remove most mmap calls but doesn't actually work according to strace.
+    mallopt(M_MMAP_MAX, 0);
+    mallopt(M_TRIM_THRESHOLD, -1);
+    mallopt(M_ARENA_MAX, 1);
+    parlay::internal::timer timer;
+    const size_t SIZE = (128 << 20) + 5;
+    const size_t reps = 11;
+    parlay::tabulate(parlay::num_workers(), [=](size_t i) {
+        size_t t = reps;
+        while (t--) {
+            void *p = malloc(SIZE);
+            memset(p, 7, SIZE);
+            free(p);
+        }
+        return i;
+    }, 1);
+    std::cout << "Throughput: " << (double) (SIZE * reps * parlay::num_workers()) / timer.next_time() << "GB";
+}
+
 std::map<std::string, std::function<void(int, char **)>> test_functions = {
         // IO
         {"write_only",            UnorderedWriteTest},
@@ -54,7 +75,8 @@ std::map<std::string, std::function<void(int, char **)>> test_functions = {
         {"scatter_gather_nop",    ScatterGatherNopTest},
         {"scatter_gather_no_io",  ScatterGatherNoIOTest},
         // Misc
-        {"aligned_alloc",         AlignedAllocTest}};
+        {"aligned_alloc",         AlignedAllocTest},
+        {"mmap",                  MmapTest}};
 
 int main(int argc, char **argv) {
     ParseGlobalArguments(argc, argv);
@@ -63,7 +85,7 @@ int main(int argc, char **argv) {
         std::cout << "Usage: " << argv[0] << " "
                   << "<which test to perform> <test-specific arguments>\n";
         std::cout << "Available tests: \n";
-        for (const auto& [test_name, _] : test_functions) {
+        for (const auto &[test_name, _]: test_functions) {
             std::cout << "  " << test_name << "\n";
         }
         return 0;

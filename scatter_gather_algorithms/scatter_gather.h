@@ -128,6 +128,7 @@ private:
         SYSCALL(fd);
         SYSCALL(write(fd, buffer, file_info.file_size));
         close(fd);
+        // FIXME: this is very expensive because munmap is called every time
         free(buffer);
         return {target_file, file_info};
     }
@@ -307,12 +308,12 @@ private:
     parlay::sequence<FileInfo>
     SimplePhase2(const std::string &result_prefix, const ProcessorFunction &processor,
                  const std::vector<FileInfo> &bucket_list) {
-        return parlay::map(parlay::iota(bucket_list.size()), [&](size_t i) {
+        return parlay::tabulate(bucket_list.size(), [&](size_t i) {
             const auto &file_info = bucket_list[i];
             auto result_name = GetFileName(result_prefix, i);
             ProcessBucket(file_info, result_name, processor);
             return FileInfo(result_name, file_info);
-        });
+        }, 1);
     }
 
 public:
