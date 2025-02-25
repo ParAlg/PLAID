@@ -236,6 +236,7 @@ void generate(int argc, char **argv) {
             break;
         case 3:
             GenerateExponentialRandomNumbers<size_t>(prefix, n, 1.0);
+            break;
         default:
             LOG(ERROR) << "Unknown sample type " << sample_type;
     }
