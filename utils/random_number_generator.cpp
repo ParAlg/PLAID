@@ -64,9 +64,9 @@ parlay::sequence<T> GenerateExponentialDistribution(size_t n, double lambda) {
     parlay::sequence<size_t> nums =
             parlay::tabulate(cutoff,
                              [=](size_t i) {
-                                 return std::max(1.0, (double)n * (lambda * exp(-lambda * ((double)i + 0.5))));
+                                 return (size_t)std::max(1.0, (double)n * (lambda * exp(-lambda * ((double)i + 0.5))));
                              });
-
+    [[maybe_unused]]
     size_t tot = scan_inplace(make_slice(nums));
     assert(tot >= n);
 
@@ -102,7 +102,7 @@ void GenerateZipfianRandomNumbers(const std::string &prefix, size_t n, double s)
 
 template<typename T>
 void GenerateExponentialRandomNumbers(const std::string &prefix, size_t n, double s) {
-    auto nums = GenerateZipfianDistribution<T>(n, s);
+    auto nums = GenerateExponentialDistribution<T>(n, s);
     T *data = nums.data();
     WriteNumbers(prefix, n, data);
 }

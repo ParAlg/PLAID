@@ -5,34 +5,38 @@
 #include "in_memory_benchmarks.h"
 
 #include "utils/random_number_generator.h"
+#include "utils/command_line.h"
 #include "parlay/primitives.h"
 #include "absl/log/check.h"
 
 const size_t THREAD_COUNT = parlay::num_workers();
 
 void InMemorySortingTest(int argc, char **argv) {
-    typedef size_t Type;
-    CHECK(argc > 2) << "Expected number of elements to sort";
-    const size_t n = 1UL << strtol(argv[2], nullptr, 10);
+    typedef uint64_t Type;
+    if (argc <= 3) {
+        usage:
+        std::cout << "Usage: " << argv[0] << " " << argv[1] << " <size (pow of 2)> <RNG type>\n"
+                  << "RNG types: \n"
+                     "  0: uniform\n"
+                     "  1: zipfian\n"
+                     "  2: exponential\n";
+        exit(1);
+    }
+    const size_t n = 1UL << ParseLong(argv[2]);
+    const size_t seq_type = ParseLong(argv[3]);
     parlay::internal::timer timer("sort");
-    parlay::sequence<Type> array(n, 0);
-    size_t step = n / THREAD_COUNT;
-    using Limit = std::numeric_limits<unsigned long>;
-    parlay::parallel_for(
-            0, THREAD_COUNT,
-            [&](size_t i) {
-                size_t start = step * i, end = step * (i + 1);
-                std::random_device device;
-                std::mt19937 rng(device());
-                std::uniform_int_distribution<Type> distribution(Limit::min(),
-                                                                 Limit::max());
-                for (size_t j = start; j < end; j++) {
-                    array[j] = distribution(rng);
-                }
-            },
-            1);
+    parlay::sequence<Type> seq;
+    if (seq_type == 0) {
+        seq = RandomSequence<Type>(n);
+    } else if (seq_type == 1) {
+        seq = GenerateZipfianDistribution<Type>(n, 1);
+    } else if (seq_type == 2) {
+        seq = GenerateExponentialDistribution<Type>(n, 1);
+    } else {
+        goto usage;
+    }
     timer.next("Start in-place sorting");
-    parlay::sort_inplace(array);
+    parlay::sort_inplace(seq);
     timer.next("parlay::sort_inplace DONE");
 }
 

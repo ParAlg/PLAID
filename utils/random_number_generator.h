@@ -16,8 +16,14 @@ parlay::sequence<T> RandomSequence(size_t n);
 template <typename T>
 void GenerateUniformRandomNumbers(const std::string &prefix, size_t count);
 
+template<typename T>
+parlay::sequence<T> GenerateZipfianDistribution(size_t n, double s);
+
 template <typename T>
 void GenerateZipfianRandomNumbers(const std::string &prefix, size_t count, double s);
+
+template<typename T>
+parlay::sequence<T> GenerateExponentialDistribution(size_t n, double s);
 
 template<typename T>
 void GenerateExponentialRandomNumbers(const std::string &prefix, size_t count, double s);
