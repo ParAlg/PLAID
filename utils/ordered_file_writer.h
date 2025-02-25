@@ -53,6 +53,9 @@ public:
         free(requests);
     }
 
+    // For debugging: setting it to true will skip the write to disk step and deallocate right before
+    bool skip_write = false;
+
     static void RunIOThread(OrderedFileWriter<T, SAMPLE_SORT_BUCKET_SIZE> *writer) {
         auto completions = &writer->free_requests;
         auto pending_requests = &writer->pending_requests;
@@ -90,6 +93,12 @@ public:
                         has_more_requests = false;
                     }
                     break;
+                }
+                if (writer->skip_write) {
+                    IOVectorRequest *r = request;
+                    r->Reset();
+                    completions->Push(r);
+                    continue;
                 }
                 io_uring_sqe *sqe = io_uring_get_sqe(&ring);
                 if (sqe == nullptr) {

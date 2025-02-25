@@ -27,7 +27,7 @@ struct UnorderedReaderConfig {
 };
 
 struct BucketedWriterConfig {
-    size_t num_threads = 5;
+    size_t num_threads = 2;
     // Need to be explicitly specified.
     size_t num_buckets = -1;
 };
@@ -348,14 +348,14 @@ public:
         // Print detailed statistics under benchmark mode, otherwise just print the time
         if (config.benchmark_mode) {
             double throughput = GetThroughput(input_files, timer.next_time());
-            std::cout << "Throughput: " << throughput << "GB\n";
+            std::cout << "Throughput1: " << throughput << "GB\n";
         } else {
             timer.next("After assign to bucket and before phase 2");
         }
         parlay::sequence<FileInfo> results = WorkerOnlyPhase2(result_prefix, processor, bucket_list);
         if (config.benchmark_mode) {
             double throughput = GetThroughput(input_files, timer.next_time());
-            std::cout << "Throughput: " << throughput << "GB\n";
+            std::cout << "Throughput2: " << throughput << "GB\n";
         } else {
             timer.next("After assign to bucket and before phase 2");
         }

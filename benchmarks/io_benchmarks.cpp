@@ -28,10 +28,15 @@ void OrderedFileWriterTest(int argc, char **argv) {
     const size_t TOTAL_WRITE_SIZE = 1UL << strtol(argv[2], nullptr, 10);
     const size_t SINGLE_WRITE_SIZE = SAMPLE_SORT_BUCKET_SIZE;
     const size_t NUM_BUCKETS = strtol(argv[3], nullptr, 10);
+    parlay::internal::timer timer;
     OrderedFileWriter<Type, SAMPLE_SORT_BUCKET_SIZE> writer(prefix, NUM_BUCKETS,
                                                             4 * (1 << 20));
     parlay::par_do(
-            [&]() { writer.RunIOThread(&writer); },
+            [&]() {
+                parlay::parallel_for(0, 2, [&](size_t i) {
+                    writer.RunIOThread(&writer);
+                }, 1);
+            },
             [&]() {
                 const size_t n = SINGLE_WRITE_SIZE / sizeof(Type);
                 LOG(INFO) << "Starting writer loop";
@@ -45,12 +50,13 @@ void OrderedFileWriterTest(int argc, char **argv) {
                             }
                             auto r = gen[i];
                             writer.Write(dis(r), array, n);
-                        });
+                        }, 1);
                 writer.CleanUp();
                 LOG(INFO) << "Waiting for completion";
             });
     auto results = writer.ReapResult();
-    LOG(INFO) << "Done writing";
+    double time = timer.next_time();
+    std::cout << "Throughput: " << GetThroughput(results, time) << "GB\n";
 }
 
 void UnorderedReadTest(int argc, char **argv) {
@@ -96,7 +102,7 @@ void UnorderedReadTest(int argc, char **argv) {
                         << "Still " << remaining_size << " bytes remaining unread";
     }
     double time_elapsed = timer.next_time();
-    double throughput = (double)(expected_size - remaining_size) / 1e9 / time_elapsed;
+    double throughput = (double) (expected_size - remaining_size) / 1e9 / time_elapsed;
     LOG(INFO) << "Throughput: " << throughput;
     if (timeout) {
         // Skip sanity checker in the reader
@@ -120,7 +126,7 @@ void UnorderedWriteTest(int argc, char **argv) {
     auto array = std::shared_ptr<Type>(
             (Type *) aligned_alloc(O_DIRECT_MULTIPLE, SINGLE_IO_SIZE), free);
     for (size_t i = 0; i < SINGLE_IO_SIZE / sizeof(Type); i++) {
-        array.get()[i] = (Type)(i * i - 5 * i - 1);
+        array.get()[i] = (Type) (i * i - 5 * i - 1);
     }
     timer.next("starting to write");
     for (size_t i = 0; i < totalWriteSize / SINGLE_IO_SIZE; i++) {
@@ -128,7 +134,7 @@ void UnorderedWriteTest(int argc, char **argv) {
     }
     writer.Wait();
     double time_elapsed = timer.next_time();
-    double throughput = (double)TOTAL_WRITE_SIZE / 1e9 / time_elapsed;
+    double throughput = (double) TOTAL_WRITE_SIZE / 1e9 / time_elapsed;
     LOG(INFO) << "Throughput: " << throughput;
 }
 
@@ -147,7 +153,7 @@ void RandomReadTest(int argc, char **argv) {
     GetFileInfo(files);
     CHECK(!files.empty()) << "No file with prefix " << prefix << " found";
     size_t total_size = 0;
-    for (auto & file : files) {
+    for (auto &file: files) {
         total_size += file.true_size;
     }
 
@@ -163,8 +169,8 @@ void RandomReadTest(int argc, char **argv) {
     auto result = RandomBatchRead<Type>(files, queries);
     double time = timer.next_time();
     LOG(INFO) << "Spent " << time << " seconds to read " << n << " elements of size " << sizeof(Type);
-    double throughput = (double)(n * O_DIRECT_MULTIPLE / 1e9) / time;
-    double iops = (double)n / time;
+    double throughput = (double) (n * O_DIRECT_MULTIPLE / 1e9) / time;
+    double iops = (double) n / time;
     std::cout.precision(10);
     std::cout << "Throughput (inc. wasted bandwidth): " << throughput << " GB/s. IOPS: " << iops;
 }
