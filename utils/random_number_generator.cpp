@@ -12,9 +12,10 @@
 #include <cstdlib>
 
 template<typename T>
-parlay::sequence <T> RandomSequence(size_t n) {
+parlay::sequence <T> RandomSequence(size_t n, T max_num) {
     parlay::random_generator rng;
-    std::uniform_int_distribution<T> dist;
+    auto limit = std::numeric_limits<T>();
+    std::uniform_int_distribution<T> dist(limit.min(), n == 0 ? limit.max() : max_num);
     parlay::sequence<T> sequence(n);
     parlay::parallel_for(0, n, [&](size_t i) {
         auto r = rng[i];
@@ -23,12 +24,12 @@ parlay::sequence <T> RandomSequence(size_t n) {
     return sequence;
 }
 
-template parlay::sequence<int64_t> RandomSequence(size_t);
-template parlay::sequence<uint64_t> RandomSequence(size_t);
-template parlay::sequence<int32_t> RandomSequence(size_t);
-template parlay::sequence<uint32_t> RandomSequence(size_t);
-template parlay::sequence<int8_t> RandomSequence(size_t);
-template parlay::sequence<uint8_t> RandomSequence(size_t);
+template parlay::sequence<int64_t> RandomSequence(size_t, int64_t limit);
+template parlay::sequence<uint64_t> RandomSequence(size_t, uint64_t limit);
+template parlay::sequence<int32_t> RandomSequence(size_t, int32_t limit);
+template parlay::sequence<uint32_t> RandomSequence(size_t, uint32_t limit);
+template parlay::sequence<int8_t> RandomSequence(size_t, int8_t limit);
+template parlay::sequence<uint8_t> RandomSequence(size_t, uint8_t limit);
 
 /**
  * From https://github.com/ucrparlay/DovetailSort/blob/91eab06c2b3256104f7ac2b71227aae664e55e5a/include/parlay/generator.h

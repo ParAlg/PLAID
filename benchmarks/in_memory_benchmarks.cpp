@@ -8,6 +8,7 @@
 #include "utils/command_line.h"
 #include "parlay/primitives.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 
 const size_t THREAD_COUNT = parlay::num_workers();
 
@@ -27,11 +28,14 @@ void InMemorySortingTest(int argc, char **argv) {
     parlay::internal::timer timer("sort");
     parlay::sequence<Type> seq;
     if (seq_type == 0) {
-        seq = RandomSequence<Type>(n);
-    } else if (seq_type == 1) {
-        seq = GenerateZipfianDistribution<Type>(n, 1);
+        LOG(INFO) << "Random uniform with limit " << argv[4];
+        seq = RandomSequence<Type>(n, ParseLong(argv[4]));
     } else if (seq_type == 2) {
-        seq = GenerateExponentialDistribution<Type>(n, 1);
+        LOG(INFO) << "Zipfian distribution with param " << argv[4];
+        seq = GenerateZipfianDistribution<Type>(n, ParseDouble(argv[4]));
+    } else if (seq_type == 3) {
+        LOG(INFO) << "Exponential distribution with param " << argv[4];
+        seq = GenerateExponentialDistribution<Type>(n, ParseDouble(argv[4]));
     } else {
         goto usage;
     }
