@@ -108,7 +108,7 @@ void GenerateExponentialRandomNumbers(const std::string &prefix, size_t n, doubl
 }
 
 template<typename T>
-void GenerateUniformRandomNumbers(const std::string &prefix, size_t count) {
+void GenerateUniformRandomNumbers(const std::string &prefix, size_t count, T limit_max) {
     const size_t GRANULARITY = 1 << 20;
     UnorderedFileWriter<T> writer(prefix);
     CHECK(count % GRANULARITY == 0) << "Can only generate numbers that are a multiple of " << GRANULARITY;
@@ -117,7 +117,10 @@ void GenerateUniformRandomNumbers(const std::string &prefix, size_t count) {
         std::random_device device;
         std::mt19937 rng(device());
         auto limit = std::numeric_limits<T>();
-        std::uniform_int_distribution<T> distribution(limit.min(), limit.max());
+        if (limit_max == 0) {
+            limit_max = limit.max();
+        }
+        std::uniform_int_distribution<T> distribution(limit.min(), limit_max);
         while (true) {
             auto current = num_blocks--;
             if (current <= 0) {
@@ -133,13 +136,13 @@ void GenerateUniformRandomNumbers(const std::string &prefix, size_t count) {
     writer.Close();
 }
 
-template void GenerateUniformRandomNumbers<int64_t>(const std::string &prefix, size_t count);
+template void GenerateUniformRandomNumbers<int64_t>(const std::string &prefix, size_t count, int64_t limit);
 
-template void GenerateUniformRandomNumbers<uint64_t>(const std::string &prefix, size_t count);
+template void GenerateUniformRandomNumbers<uint64_t>(const std::string &prefix, size_t count, uint64_t limit);
 
-template void GenerateUniformRandomNumbers<int32_t>(const std::string &prefix, size_t count);
+template void GenerateUniformRandomNumbers<int32_t>(const std::string &prefix, size_t count, int32_t limit);
 
-template void GenerateUniformRandomNumbers<uint32_t>(const std::string &prefix, size_t count);
+template void GenerateUniformRandomNumbers<uint32_t>(const std::string &prefix, size_t count, uint32_t limit);
 
 template void GenerateZipfianRandomNumbers<size_t>(const std::string &prefix, size_t n, double s);
 

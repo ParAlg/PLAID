@@ -212,12 +212,12 @@ void TestSampleSortSmall(size_t n, bool generate) {
 
 void generate(int argc, char **argv) {
     if (argc < 5) {
-        LOG(ERROR) << "Usage: " << argv[0] << " gen <data size (power of 2)> <prefix> <type>\n"
+        LOG(ERROR) << "Usage: " << argv[0] << " gen <data size (power of 2)> <prefix> <type> <param>\n"
          << "  types:\n"
-         << "  0: uniform random\n"
+         << "  0: uniform random (param: limit)\n"
          << "  1: permutation (in-memory)\n"
-         << "  2: zipfian (in-memory)\n"
-         << "  3: exponential (in-memory)";
+         << "  2: zipfian (in-memory, param: s)\n"
+         << "  3: exponential (in-memory, param: s)";
         return;
     }
     size_t n = 1UL << ParseLong(argv[2]);
@@ -226,16 +226,16 @@ void generate(int argc, char **argv) {
     LOG(INFO) << "Generating " << n << " numbers with file prefix " << prefix << ". Sample type: " << sample_type << ".";
     switch(sample_type) {
         case 0:
-            GenerateUniformRandomNumbers<size_t>(prefix, n);
+            GenerateUniformRandomNumbers<size_t>(prefix, n, ParseLong(argv[5]));
             break;
         case 1:
             GenerateSmallSample(prefix, n);
             break;
         case 2:
-            GenerateZipfianRandomNumbers<size_t>(prefix, n, 1.0);
+            GenerateZipfianRandomNumbers<size_t>(prefix, n, ParseDouble(argv[5]));
             break;
         case 3:
-            GenerateExponentialRandomNumbers<size_t>(prefix, n, 1.0);
+            GenerateExponentialRandomNumbers<size_t>(prefix, n, ParseDouble(argv[5]));
             break;
         default:
             LOG(ERROR) << "Unknown sample type " << sample_type;

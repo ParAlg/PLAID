@@ -14,9 +14,9 @@
 
 void ParseGlobalArguments(int &argc, char **argv) {
     std::map<std::string, std::string> arguments = {
-        {"num_ssd", std::to_string(SSD_COUNT)},
-        {"ssd_selection", "s"},
-        {"ssd", ""}
+            {"num_ssd",       std::to_string(SSD_COUNT)},
+            {"ssd_selection", "s"},
+            {"ssd",           ""}
     };
 
     int argument_index = 1;
@@ -50,7 +50,7 @@ void ParseGlobalArguments(int &argc, char **argv) {
         int num = 0;
         std::vector<int> numbers;
         bool last = false;
-        for (char c : arguments["ssd"]) {
+        for (char c: arguments["ssd"]) {
             if (c == ',') {
                 numbers.push_back(num);
                 num = 0;
@@ -82,3 +82,9 @@ void ParseGlobalArguments(int &argc, char **argv) {
 long ParseLong(char *string) {
     return strtol(string, nullptr, 10);
 }
+
+double ParseDouble(char *string) {
+    return strtod(string, nullptr);
+}
+
+
