@@ -24,16 +24,20 @@ for type in 0 2 3; do
         executable="./bazel-bin/sample_sort"
         input_prefix="numbers"
         output_prefix="result"
-        for i in {30..40}; do
+        for data_size in {30..40}; do
             bash scripts/clear.sh
-            "${executable}" gen "${i}" "${input_prefix}" "$type" "$param"
-            printf "%s," "${i}" >> "result.txt"
+            sudo ./scripts/fstrim.sh
+            sleep 10
+            "${executable}" gen "$data_size" "${input_prefix}" "$type" "$param"
+            printf "%s," "$data_size" >> "result.txt"
             loop_end=5
             if [ "$data_size" -ge 34 ]; then
                 loop_end=1
             fi
             for _ in $(seq 1 "$loop_end"); do
                 bash scripts/reset.sh
+                sudo ./scripts/fstrim.sh
+                sleep 10
                 "${executable}" "run" "${input_prefix}" "${output_prefix}" > "temp.txt"
                 grep "DONE" "temp.txt" | sed -e "s/^.*DONE: \([0-9.]\+\)$/\1,/" | tr -d '\n' >> "result.txt"
             done
