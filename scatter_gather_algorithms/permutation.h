@@ -51,7 +51,6 @@ public:
 
     std::vector<FileInfo> Permute(std::vector<FileInfo> &input_files,
                                   const std::string &result_prefix) {
-        parlay::internal::timer timer("Permutation internal", true);
         GetFileInfo(input_files);
         ComputeBeforeSize(input_files);
         size_t num_buckets = GetBucketSize(input_files);
@@ -67,15 +66,12 @@ public:
             auto seq = parlay::make_slice(ptr, ptr + n);
             parlay::random_shuffle(seq);
         };
-        timer.next("Permutation prep done. Calling scatter gather.");
         ScatterGatherConfig config;
         config.bucketed_writer_config.num_buckets = num_buckets + 1;
         auto results = scatter_gather.Run(input_files, result_prefix,
                                           simple_assigner,
                                           simple_processor,
                                           config);
-        timer.next("Permutation complete");
-        timer.stop();
         return {results.begin(), results.end()};
     }
 };

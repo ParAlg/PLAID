@@ -8,17 +8,6 @@
 #include "scatter_gather_algorithms/permutation.h"
 #include "utils/command_line.h"
 
-void generate(int argc, char **argv) {
-    if (argc < 5) {
-        LOG(ERROR) << "Usage: " << argv[0] << " gen <data size (power of 2)> <prefix> <element size (in bytes)>";
-        return;
-    }
-    size_t n = 1UL << ParseLong(argv[2]);
-    std::string prefix(argv[3]);
-    unsigned int element_size = (bool) ParseLong(argv[4]);
-    LOG(INFO) << "Generating " << n << " elements of size " << element_size << " with file prefix " << prefix;
-}
-
 void RunTest(int argc, char **argv) {
     if (argc < 4) {
         LOG(ERROR) << "Usage: " << argv[0] << " run <input prefix> <output prefix>";
@@ -27,12 +16,12 @@ void RunTest(int argc, char **argv) {
     std::string input_prefix(argv[2]), output_prefix(argv[3]);
     auto input_files = FindFiles(input_prefix);
     Permutation<size_t> permutation;
-    parlay::internal::timer timer("Sample sort");
+    parlay::internal::timer timer("Permutation");
     auto result_files = permutation.Permute(input_files, output_prefix);
     timer.next("DONE");
 }
 
-void verify(int argc, char **argv) {
+void Verify(int argc, char **argv) {
     std::string prefix(argv[2]);
     size_t expected_size = 1UL << ParseLong(argv[3]);
     expected_size *= sizeof(size_t);
@@ -59,9 +48,8 @@ int main(int argc, char **argv) {
     }
     std::map<std::string, std::function<void(int, char **)>> commands(
         {
-            {"gen",    generate},
             {"run",    RunTest},
-            {"verify", verify}
+            {"Verify", Verify}
         }
     );
     if (commands.count(argv[1])) {

@@ -257,7 +257,7 @@ void RunTest(int argc, char **argv) {
 
 void verify_result(int argc, char **argv) {
     if (argc < 5) {
-        LOG(ERROR) << "Usage: " << argv[0] << " verify <file prefix> <large data: 1|0> <data size>";
+        LOG(ERROR) << "Usage: " << argv[0] << " Verify <file prefix> <large data: 1|0> <data size>";
     }
     std::string prefix(argv[2]);
     bool large_data = (bool) ParseLong(argv[3]);
@@ -277,14 +277,14 @@ int main(int argc, char **argv) {
     ParseGlobalArguments(argc, argv);
     if (argc < 2) {
         show_usage:
-        LOG(ERROR) << "Usage: " << argv[0] << " <gen|run|verify> <command-specific options>";
+        LOG(ERROR) << "Usage: " << argv[0] << " <gen|run|Verify> <command-specific options>";
         return 0;
     }
     std::map<std::string, std::function<void(int, char **)>> commands(
         {
             {"gen",    generate},
             {"run",    RunTest},
-            {"verify", verify_result}
+            {"Verify", verify_result}
         }
     );
     if (commands.count(argv[1])) {
