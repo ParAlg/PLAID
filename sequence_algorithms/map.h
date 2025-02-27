@@ -15,7 +15,7 @@ void Map(std::vector<FileInfo> files, std::string result_prefix, std::function<R
     UnorderedFileReader<T> reader;
     reader.PrepFiles(files);
     reader.Start(1 << 20, 16, 8, 5);
-    UnorderedFileWriter<R> writer(result_prefix, 32, 2, files.size());
+    UnorderedFileWriter<R> writer(result_prefix, 8, 5, files.size());
     parlay::parallel_for(0, parlay::num_workers(), [&](size_t _) {
         while (true) {
             auto [ptr, n, file_index, element_index] = reader.Poll();

@@ -37,6 +37,8 @@ public:
                                  size_t io_uring_size = IO_URING_BUFFER_SIZE,
                                  size_t num_threads = 1,
                                  size_t num_files = SSD_COUNT) : num_files(num_files) {
+        // FIXME: don't ues a magic number
+        wait_queue.SetSizeLimit(1000);
         std::vector<std::string> file_names;
         for (size_t i = 0; i < num_files; i++) {
             file_names.push_back(GetFileName(prefix, i));
@@ -91,16 +93,25 @@ public:
         wait_queue.Close();
     }
 
+    bool cleanup_done = false;
+
     /**
      * Block until file intermediate_writer finishes and return the number of files
      * @return
      */
     size_t Wait() {
+        if (cleanup_done) {
+            return num_files;
+        }
+        cleanup_done = true;
         Close();
         for (auto &thread: worker_threads) {
             if (thread->joinable()) {
                 thread->join();
             }
+        }
+        for (auto &f: global_files) {
+            delete f;
         }
         return num_files;
     }
@@ -241,9 +252,6 @@ private:
             [[unlikely]];
             LOG(WARNING) << "io_uring sqe entires were unavailable " << sqe_unavailable_count << " times. " <<
                          "Consider expanding the ring buffer.";
-        }
-        for (auto &f: files) {
-            delete f;
         }
         io_uring_queue_exit(&ring);
     }
