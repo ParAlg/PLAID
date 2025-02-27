@@ -10,12 +10,12 @@
 #include "utils/unordered_file_reader.h"
 #include "utils/unordered_file_writer.h"
 
-template <typename T, typename R = T>
+template <typename T, typename R = T, bool in_place = sizeof(T) == sizeof(R)>
 void Map(std::vector<FileInfo> files, std::string result_prefix, std::function<R(T)> f) {
     UnorderedFileReader<T> reader;
     reader.PrepFiles(files);
-    reader.Start(1 << 20, 64, 64, 2);
-    UnorderedFileWriter<R> writer(result_prefix, 64, 2, files.size());
+    reader.Start(1 << 20, 16, 8, 5);
+    UnorderedFileWriter<R> writer(result_prefix, 32, 2, files.size());
     parlay::parallel_for(0, parlay::num_workers(), [&](size_t _) {
         while (true) {
             auto [ptr, n, file_index, element_index] = reader.Poll();
@@ -23,7 +23,8 @@ void Map(std::vector<FileInfo> files, std::string result_prefix, std::function<R
                 break;
             }
             R *result;
-            if (sizeof(T) == sizeof(R)) {
+            if (in_place) {
+                // FIXME: strict aliasing violation here?
                 for (size_t i = 0; i < n; i++) {
                     ptr[i] = f(ptr[i]);
                 }

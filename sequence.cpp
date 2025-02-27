@@ -25,8 +25,11 @@ void RunReduce(int argc, char **argv) {
     GetFileInfo(files);
     timer.next("Start reduce");
     auto result = Reduce<size_t>(files, monoid);
-    timer.next("Finish reduce");
-    LOG(INFO) << "Result: " << result;
+    double time = timer.next_time();
+    double throughput = GetThroughput(files, time);
+    std::cout << "Time: " << time << "\n";
+    std::cout << "Throughput: " << throughput << "GB\n";
+    std::cout <<  "Result: " << result << '\n';
 }
 
 void RunMap(int argc, char **argv) {
@@ -39,7 +42,10 @@ void RunMap(int argc, char **argv) {
     GetFileInfo(files);
     timer.next("Start map");
     Map<size_t, size_t>(files, result_prefix, [](size_t num) { return num / 2; });
-    timer.next("Finish map");
+    double time = timer.next_time();
+    double throughput = GetThroughput(files, time);
+    std::cout << "Time: " << time << "\n";
+    std::cout << "Throughput: " << throughput << "GB\n";
 }
 
 void VerifyMap(int argc, char **argv) {

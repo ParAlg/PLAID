@@ -19,8 +19,9 @@ template <typename T, typename R = T, typename Monoid>
 R Reduce(std::vector<FileInfo> files, Monoid monoid) {
     UnorderedFileReader<T> reader;
     reader.PrepFiles(files);
-    reader.Start(1 << 20, 64, 64, 2);
-    return parlay::reduce(parlay::map(parlay::iota(parlay::num_workers()), [&](size_t worker_index) {
+    // Use more IO threads to maximize bandwidth since this is the bottleneck, not the CPU
+    reader.Start(1 << 20, 8, 4, 10);
+    return parlay::reduce(parlay::tabulate(parlay::num_workers(), [&](size_t worker_index) {
         R result = monoid.identity;
         while (true) {
             auto [ptr, n, _, _2] = reader.Poll();
