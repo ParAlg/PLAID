@@ -58,7 +58,7 @@ public:
                 file_list.push_back(global_files[file_index]);
             }
             worker_threads.push_back(std::make_unique<std::thread>(
-                RunFileWriterWorker, this, file_list, io_uring_size));
+                    RunFileWriterWorker, this, file_list, io_uring_size));
         }
     }
 
@@ -73,9 +73,10 @@ public:
         //   alternatively, use ftruncate to change the size of the file
         //   long term solution is to store the size of the last section in the end of the file (i.e. last 8 bytes)
         CHECK(size * sizeof(T) % O_DIRECT_MULTIPLE == 0)
-                    << "Size (in bytes) must be aligned to the size of a page in O_DIRECT mode. "
-                    << "Actual size: " << size * sizeof(T);
-        CHECK((size_t)data.get() % O_DIRECT_MULTIPLE == 0) << "Buffers used by the UnorderedFileWriter must be aligned.";
+                        << "Size (in bytes) must be aligned to the size of a page in O_DIRECT mode. "
+                        << "Actual size: " << size * sizeof(T);
+        CHECK((size_t) data.get() % O_DIRECT_MULTIPLE == 0)
+                        << "Buffers used by the UnorderedFileWriter must be aligned.";
         auto request = new WriteRequest(std::move(data), size, file_index, file_offset);
         wait_queue.Push(request);
     }

@@ -54,6 +54,7 @@ std::vector<std::string> GetSSDList();
 
 void MakeFileEndMarker(unsigned char *buffer, size_t size, size_t real_size);
 
+double GetThroughput(size_t size, double time);
 double GetThroughput(const std::vector<FileInfo> &files, double time);
 
 #endif //SORTING_FILE_UTILS_H

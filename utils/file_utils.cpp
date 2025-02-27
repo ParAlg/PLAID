@@ -240,10 +240,14 @@ void MakeFileEndMarker(unsigned char *buffer, size_t size, size_t real_size) {
     *(uint16_t*)(&buffer[size - METADATA_SIZE]) = (uint16_t)byte_diff;
 }
 
+double GetThroughput(size_t size, double time) {
+    return ((double) size / 1e9) / time;
+}
+
 double GetThroughput(const std::vector<FileInfo> &files, double time) {
     size_t size = 0;
     for (const auto &f : files) {
         size += f.true_size == 0 ? f.file_size : f.true_size;
     }
-    return ((double) size / 1e9) / time;
+    return GetThroughput(size, time);
 }

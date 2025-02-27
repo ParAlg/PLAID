@@ -6,11 +6,10 @@
 
 #include "utils/random_number_generator.h"
 #include "utils/command_line.h"
+#include "utils/file_utils.h"
 #include "parlay/primitives.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
-
-const size_t THREAD_COUNT = parlay::num_workers();
 
 void InMemorySortingTest(int argc, char **argv) {
     typedef uint64_t Type;
@@ -79,7 +78,10 @@ void InMemoryReduceTest(int argc, char **argv) {
     timer.next("Start reduce");
     parlay::monoid monoid([](T a, T b) { return a ^ b; }, 0);
     [[maybe_unused]] auto result = parlay::reduce(sequence, monoid);
-    timer.next("Reduce done");
+    double time = timer.next_time();
+    double throughput = GetThroughput(n * sizeof(T), time);
+    std::cout << "Throughput: " << throughput << "GB\n";
+    std::cout << "DONE: " << time << '\n';
 }
 
 void InMemoryMapTest(int argc, char **argv) {
@@ -91,5 +93,8 @@ void InMemoryMapTest(int argc, char **argv) {
     timer.next("Start map");
     [[maybe_unused]]
     auto result = parlay::map(sequence, [](T num) { return num / 2; });
-    timer.next("Map done");
+    double time = timer.next_time();
+    double throughput = GetThroughput(n * sizeof(T), time);
+    std::cout << "Throughput: " << throughput << "GB\n";
+    std::cout << "DONE: " << time << '\n';
 }
