@@ -174,17 +174,16 @@ void WriteNumbers(const std::string &prefix, size_t n, const T *data) {
 
 template<typename T>
 void WriteNumbers(const std::string &prefix, size_t n, const std::function<parlay::sequence<T>(size_t)> &generator) {
-    UnorderedFileWriter<T> writer(prefix);
+    UnorderedFileWriter<T> writer(prefix, 4, 10);
     constexpr auto WRITE_SIZE = 4 << 20;
     const auto step = WRITE_SIZE / sizeof(T);
-    for (size_t i = 0; i < n; i += step) {
+    parlay::parallel_for(0, n / step, [&](size_t i) {
         T *buffer = (T *) std::aligned_alloc(O_DIRECT_MULTIPLE, WRITE_SIZE);
         auto seq = generator(step);
         memcpy(buffer, seq.data(), WRITE_SIZE);
         std::shared_ptr<T> temp(buffer, free);
         writer.Push(temp, step);
-    }
-    writer.Close();
+    }, 1);
 }
 
 template<typename T>
