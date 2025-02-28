@@ -1,8 +1,10 @@
 #!/bin/bash
 
+# Sorting with input data size scaling
+
 bazel build -c opt "//:all"
 
-for type in 0 2 3; do
+for type in 2 3; do
     echo "RNG type: $type" >> "result.txt"
 
     if [ "$type" == 0 ]; then
@@ -37,7 +39,7 @@ for type in 0 2 3; do
             for _ in $(seq 1 "$loop_end"); do
                 bash scripts/reset.sh
                 sudo ./scripts/fstrim.sh
-                sleep 10
+                sleep 60
                 "${executable}" "run" "${input_prefix}" "${output_prefix}" > "temp.txt"
                 grep "DONE" "temp.txt" | sed -e "s/^.*DONE: \([0-9.]\+\)$/\1,/" | tr -d '\n' >> "result.txt"
             done

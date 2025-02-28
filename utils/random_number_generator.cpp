@@ -36,28 +36,115 @@ template parlay::sequence<int8_t> RandomSequence(size_t, int8_t limit);
 
 template parlay::sequence<uint8_t> RandomSequence(size_t, uint8_t limit);
 
-/**
- * From https://github.com/ucrparlay/DovetailSort/blob/91eab06c2b3256104f7ac2b71227aae664e55e5a/include/parlay/generator.h
- * License: MIT
+/** Zipf-like random distribution.
+ *
+ * https://stackoverflow.com/questions/9983239/how-to-generate-zipf-distributed-numbers-efficiently
+ * License: CC BY-SA 4.0
+ *
+ * "Rejection-inversion to generate variates from monotone discrete
+ * distributions", Wolfgang Hörmann and Gerhard Derflinger
+ * ACM TOMACS 6.3 (1996): 169-184
  */
+template<class IntType = unsigned long, class RealType = double>
+class zipf_distribution
+{
+public:
+    typedef RealType input_type;
+    typedef IntType result_type;
+
+    static_assert(std::numeric_limits<IntType>::is_integer, "");
+    static_assert(!std::numeric_limits<RealType>::is_integer, "");
+
+    zipf_distribution(const IntType n=std::numeric_limits<IntType>::max(),
+                      const RealType q=1.0)
+            : n(n)
+            , q(q)
+            , H_x1(H(1.5) - 1.0)
+            , H_n(H(n + 0.5))
+            , dist(H_x1, H_n)
+    {}
+
+    IntType operator()(parlay::random_generator& rng)
+    {
+        while (true) {
+            const RealType u = dist(rng);
+            const RealType x = H_inv(u);
+            const auto k = clamp<IntType>(std::round(x), 1, n);
+            if (u >= H(k + 0.5) - h(k)) {
+                return k;
+            }
+        }
+    }
+
+private:
+    /** Clamp x to [min, max]. */
+    template<typename T>
+    static constexpr T clamp(const T x, const T min, const T max)
+    {
+        return std::max(min, std::min(max, x));
+    }
+
+    /** exp(x) - 1 / x */
+    static double
+    expxm1bx(const double x)
+    {
+        return (std::abs(x) > epsilon)
+               ? std::expm1(x) / x
+               : (1.0 + x/2.0 * (1.0 + x/3.0 * (1.0 + x/4.0)));
+    }
+
+    /** H(x) = log(x) if q == 1, (x^(1-q) - 1)/(1 - q) otherwise.
+     * H(x) is an integral of h(x).
+     *
+     * Note the numerator is one less than in the paper order to work with all
+     * positive q.
+     */
+    const RealType H(const RealType x)
+    {
+        const RealType log_x = std::log(x);
+        return expxm1bx((1.0 - q) * log_x) * log_x;
+    }
+
+    /** log(1 + x) / x */
+    static RealType
+    log1pxbx(const RealType x)
+    {
+        return (std::abs(x) > epsilon)
+               ? std::log1p(x) / x
+               : 1.0 - x * ((1/2.0) - x * ((1/3.0) - x * (1/4.0)));
+    }
+
+    /** The inverse function of H(x) */
+    const RealType H_inv(const RealType x)
+    {
+        const RealType t = std::max(-1.0, x * (1.0 - q));
+        return std::exp(log1pxbx(t) * x);
+    }
+
+    /** That hat function h(x) = 1 / (x ^ q) */
+    const RealType h(const RealType x)
+    {
+        return std::exp(-q * std::log(x));
+    }
+
+    static constexpr RealType epsilon = 1e-8;
+
+    IntType                                  n;     ///< Number of elements
+    RealType                                 q;     ///< Exponent
+    RealType                                 H_x1;  ///< H(x_1)
+    RealType                                 H_n;   ///< H(n)
+    std::uniform_real_distribution<RealType> dist;  ///< [H(x_1), H(n)]
+};
+
 template<typename T>
-parlay::sequence<T> GenerateZipfianDistribution(size_t n, double s) {
-    size_t cutoff = n;
-    auto harmonic = parlay::delayed_seq<double>(cutoff, [&](size_t i) { return 1.0 / std::pow(i + 1, s); });
-    double sum = parlay::reduce(make_slice(harmonic));
-    double v = n / sum;
-    parlay::sequence<size_t> nums(cutoff + 1, 0);
-    parlay::parallel_for(0, cutoff, [&](size_t i) { nums[i] = (T) std::max(1.0, v / std::pow(i + 1, s)); });
-    [[maybe_unused]]
-    size_t tot = parlay::scan_inplace(make_slice(nums));
-    assert(tot >= n);
-    parlay::sequence<T> seq(n);
-    parlay::parallel_for(0, cutoff, [&](size_t i) {
-        parlay::parallel_for(nums[i], std::min(n, nums[i + 1]), [&](size_t j) {
-            seq[j] = i;
-        });
+parlay::sequence<T> GenerateZipfianDistribution(size_t n, double s, T limit) {
+    parlay::random_generator random;
+    zipf_distribution<T> distribution(limit, s);
+
+    return parlay::tabulate(n, [&](size_t i) {
+        auto rng = random[i];
+        return (T) distribution(rng);
     });
-    return random_shuffle(seq);
 }
 
 template<typename T>
@@ -102,9 +189,9 @@ void WriteNumbers(const std::string &prefix, size_t n, const std::function<parla
 
 template<typename T>
 void GenerateZipfianRandomNumbers(const std::string &prefix, size_t n, double s) {
-    auto nums = GenerateZipfianDistribution<T>(n, s);
-    T *data = nums.data();
-    WriteNumbers(prefix, n, data);
+    WriteNumbers<T>(prefix, n, [&](size_t sz) {
+        return GenerateZipfianDistribution<T>(sz, s, n);
+    });
 }
 
 template<typename T>

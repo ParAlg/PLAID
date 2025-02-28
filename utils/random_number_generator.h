@@ -17,7 +17,7 @@ template <typename T>
 void GenerateUniformRandomNumbers(const std::string &prefix, size_t count, T limit = 0);
 
 template<typename T>
-parlay::sequence<T> GenerateZipfianDistribution(size_t n, double s);
+parlay::sequence<T> GenerateZipfianDistribution(size_t n, double s, T limit = std::numeric_limits<T>::max());
 
 template <typename T>
 void GenerateZipfianRandomNumbers(const std::string &prefix, size_t count, double s);
