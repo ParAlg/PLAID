@@ -4,7 +4,7 @@
 
 bazel build -c opt "//:all"
 
-for type in 2 3; do
+for type in 0 2 3; do
     echo "RNG type: $type" >> "result.txt"
 
     if [ "$type" == 0 ]; then
