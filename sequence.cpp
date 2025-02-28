@@ -29,7 +29,7 @@ void RunReduce(int argc, char **argv) {
     double throughput = GetThroughput(files, time);
     std::cout << "Time: " << time << "\n";
     std::cout << "Throughput: " << throughput << "GB\n";
-    std::cout <<  "Result: " << result << '\n';
+    std::cout << "Result: " << result << '\n';
 }
 
 void RunMap(int argc, char **argv) {
