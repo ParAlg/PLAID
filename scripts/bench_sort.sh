@@ -12,7 +12,7 @@ for type in 2 3; do
     elif [ "$type" == 2 ]; then
         param=1
     elif [ "$type" == 3 ]; then
-        param=5
+        param=0.00005
     fi
     if [ "$1" == "i" ]; then
         executable="./bazel-bin/speed_test"
@@ -32,14 +32,16 @@ for type in 2 3; do
             sleep 10
             "${executable}" gen "$data_size" "${input_prefix}" "$type" "$param"
             printf "%s," "$data_size" >> "result.txt"
-            loop_end=5
+            loop_end=3
+            sleep_time=5
             if [ "$data_size" -ge 34 ]; then
                 loop_end=1
+                sleep_time=60
             fi
             for _ in $(seq 1 "$loop_end"); do
                 bash scripts/reset.sh
                 sudo ./scripts/fstrim.sh
-                sleep 60
+                sleep "$sleep_time"
                 "${executable}" "run" "${input_prefix}" "${output_prefix}" > "temp.txt"
                 grep "DONE" "temp.txt" | sed -e "s/^.*DONE: \([0-9.]\+\)$/\1,/" | tr -d '\n' >> "result.txt"
             done
