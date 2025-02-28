@@ -7,7 +7,7 @@ input_prefix="numbers"
 output_prefix="result"
 data_size="34"
 
-for type in 0 2 3; do
+for type in 3; do
     echo "Type: $type" >> "result.txt"
 
     if [ "$type" == 0 ]; then
@@ -15,7 +15,7 @@ for type in 0 2 3; do
     elif [ "$type" == 2 ]; then
       params=("0.6" "0.8" "1" "1.2" "1.5")
     elif [ "$type" == 3 ]; then
-      params=("1" "2" "5" "7" "10")
+      params=("0.00001" "0.00002" "0.00005" "0.00007" "0.0001")
     fi
 
     for param in "${params[@]}"; do
@@ -28,7 +28,7 @@ for type in 0 2 3; do
             "${executable}" "--ssd=${ssd_numbers}" "gen" "${data_size}" "${input_prefix}" "$type" "$param" > "temp.txt" 2>&1
             echo "$ssd_numbers"
             printf "%s," "${ssd_count}" >> "result.txt"
-            for _ in {1..5}; do
+            for _ in {1..3}; do
                 bash scripts/reset.sh
                 sudo bash scripts/fstrim.sh
                 if [ "$ssd_count" -le 4 ]; then
