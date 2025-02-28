@@ -7,7 +7,7 @@ input_prefix="numbers"
 output_prefix="result"
 data_size="34"
 
-for type in 3; do
+for type in 0 2 3; do
     echo "Type: $type" >> "result.txt"
 
     if [ "$type" == 0 ]; then

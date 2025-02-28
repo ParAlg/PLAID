@@ -12,7 +12,7 @@ for type in 0 2 3; do
     elif [ "$type" == 2 ]; then
         params=("0.6" "0.8" "1" "1.2" "1.5")
     elif [ "$type" == 3 ]; then
-        params=("1" "2" "5" "7" "10")
+        params=("0.00001" "0.00002" "0.00005" "0.00007" "0.0001")
     fi
     for param in "${params[@]}"; do
         echo "Param $param" >> "result.txt"
