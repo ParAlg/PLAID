@@ -12,7 +12,7 @@
 #include <cstdlib>
 
 template<typename T>
-parlay::sequence <T> RandomSequence(size_t n, T max_num) {
+parlay::sequence<T> RandomSequence(size_t n, T max_num) {
     parlay::random_generator rng;
     auto limit = std::numeric_limits<T>();
     std::uniform_int_distribution<T> dist(limit.min(), n == 0 ? limit.max() : max_num);
@@ -25,10 +25,15 @@ parlay::sequence <T> RandomSequence(size_t n, T max_num) {
 }
 
 template parlay::sequence<int64_t> RandomSequence(size_t, int64_t limit);
+
 template parlay::sequence<uint64_t> RandomSequence(size_t, uint64_t limit);
+
 template parlay::sequence<int32_t> RandomSequence(size_t, int32_t limit);
+
 template parlay::sequence<uint32_t> RandomSequence(size_t, uint32_t limit);
+
 template parlay::sequence<int8_t> RandomSequence(size_t, int8_t limit);
+
 template parlay::sequence<uint8_t> RandomSequence(size_t, uint8_t limit);
 
 /**
@@ -55,29 +60,15 @@ parlay::sequence<T> GenerateZipfianDistribution(size_t n, double s) {
     return random_shuffle(seq);
 }
 
-/**
- * From https://github.com/ucrparlay/DovetailSort/blob/91eab06c2b3256104f7ac2b71227aae664e55e5a/include/parlay/generator.h#L52
- * License: MIT
- */
-template<class T>
-parlay::sequence<T> GenerateExponentialDistribution(size_t n, double lambda) {
-    size_t cutoff = n;
-    parlay::sequence<size_t> nums =
-            parlay::tabulate(cutoff,
-                             [=](size_t i) {
-                                 return (size_t)std::max(1.0, (double)n * (lambda * exp(-lambda * ((double)i + 0.5))));
-                             });
-    [[maybe_unused]]
-    size_t tot = scan_inplace(make_slice(nums));
-    assert(tot >= n);
+template<typename T>
+parlay::sequence<T> GenerateExponentialDistribution(size_t count, double lambda) {
+    parlay::random_generator random;
+    std::exponential_distribution<double> distribution(lambda);
 
-    parlay::sequence<T> seq(n);
-    parlay::parallel_for(0, cutoff, [&](size_t i) {
-        parlay::parallel_for(nums[i], std::min(n, nums[i + 1]), [&](size_t j) {
-            seq[j] = i;
-        });
+    return parlay::tabulate(count, [&](size_t i) {
+        auto rng = random[i];
+        return (T) distribution(rng);
     });
-    return random_shuffle(seq);
 }
 
 template<typename T>
@@ -95,6 +86,21 @@ void WriteNumbers(const std::string &prefix, size_t n, const T *data) {
 }
 
 template<typename T>
+void WriteNumbers(const std::string &prefix, size_t n, const std::function<parlay::sequence<T>(size_t)> &generator) {
+    UnorderedFileWriter<T> writer(prefix);
+    constexpr auto WRITE_SIZE = 4 << 20;
+    const auto step = WRITE_SIZE / sizeof(T);
+    for (size_t i = 0; i < n; i += step) {
+        T *buffer = (T *) std::aligned_alloc(O_DIRECT_MULTIPLE, WRITE_SIZE);
+        auto seq = generator(step);
+        memcpy(buffer, seq.data(), WRITE_SIZE);
+        std::shared_ptr<T> temp(buffer, free);
+        writer.Push(temp, step);
+    }
+    writer.Close();
+}
+
+template<typename T>
 void GenerateZipfianRandomNumbers(const std::string &prefix, size_t n, double s) {
     auto nums = GenerateZipfianDistribution<T>(n, s);
     T *data = nums.data();
@@ -103,9 +109,9 @@ void GenerateZipfianRandomNumbers(const std::string &prefix, size_t n, double s)
 
 template<typename T>
 void GenerateExponentialRandomNumbers(const std::string &prefix, size_t n, double s) {
-    auto nums = GenerateExponentialDistribution<T>(n, s);
-    T *data = nums.data();
-    WriteNumbers(prefix, n, data);
+    WriteNumbers<T>(prefix, n, [&](size_t sz) {
+        return GenerateExponentialDistribution<T>(sz, s);
+    });
 }
 
 template<typename T>
