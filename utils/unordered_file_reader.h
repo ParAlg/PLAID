@@ -9,6 +9,7 @@
 #include "utils/file_utils.h"
 #include "configs.h"
 #include "utils/simple_queue.h"
+#include "utils/type_allocator.h"
 #include <thread>
 #include <condition_variable>
 #include <mutex>
@@ -26,10 +27,35 @@
  *
  * @tparam T The data type to be read from the file.
  */
-template<typename T>
+template<typename T, size_t READ_SIZE = READER_READ_SIZE>
 class UnorderedFileReader {
 public:
     typedef std::tuple<T *, size_t, size_t, size_t> BufferData;
+
+    using ReaderData = AllocatorData<READ_SIZE>;
+
+    struct ReaderAllocator {
+        std::vector<T *> free_list;
+        std::mutex free_list_lock;
+
+        T *alloc() {
+            std::unique_lock lock(free_list_lock);
+            if (!free_list.empty()) {
+                auto ret = free_list.back();
+                free_list.pop_back();
+                return ret;
+            }
+            // FIXME: implement this
+            return nullptr;
+        }
+
+        void free(T *ptr) {
+            std::unique_lock lock(free_list_lock);
+            free_list.push_back(ptr);
+        }
+    };
+
+    ReaderAllocator allocator;
 
     /**
      * Creates the object. Note that you should call PrepFiles and Start to really begin the file reader.
@@ -54,8 +80,7 @@ public:
         this->files = file_list;
     }
 
-    void Start(size_t array_size = 1 << 20,
-               size_t max_outstanding_requests = IO_URING_BUFFER_SIZE * 2,
+    void Start(size_t max_outstanding_requests = IO_URING_BUFFER_SIZE * 2,
                size_t io_uring_size = IO_URING_BUFFER_SIZE,
                size_t num_io_threads = 1) {
         CHECK(num_io_threads > 0) << "Need at least 1 thread";
@@ -66,8 +91,8 @@ public:
                 file_list.push_back(files[j]);
             }
             worker_threads.push_back(
-                std::make_unique<std::thread>(RunFileReaderWorker, this, std::move(file_list),
-                                              array_size, io_uring_size, max_outstanding_requests));
+                    std::make_unique<std::thread>(RunFileReaderWorker, this, std::move(file_list),
+                                                  io_uring_size, max_outstanding_requests));
         }
     }
 
@@ -78,7 +103,7 @@ public:
      * @param size
      */
     void Push(T *data, size_t size, size_t file_index, size_t data_index) {
-        CHECK((size_t)data % O_DIRECT_MULTIPLE == 0) << "Buffers used by the UnorderedFileReader must be aligned.";
+        CHECK((size_t) data % O_DIRECT_MULTIPLE == 0) << "Buffers used by the UnorderedFileReader must be aligned.";
         buffer_queue.Push({data, size, file_index, data_index});
     }
 
@@ -135,13 +160,13 @@ private:
         const size_t file_index;
 
         OpenedFile(const std::string &name, size_t file_size, size_t file_index)
-            : file_size(file_size), file_index(file_index) {
+                : file_size(file_size), file_index(file_index) {
             fd = open(name.c_str(), O_DIRECT | O_RDONLY);
             SYSCALL(fd);
         }
 
         explicit OpenedFile(const FileInfo &info)
-            : OpenedFile(info.file_name, info.file_size, info.file_index) {
+                : OpenedFile(info.file_name, info.file_size, info.file_index) {
         }
 
         ~OpenedFile() {
@@ -157,7 +182,6 @@ private:
 
     static void RunFileReaderWorker(UnorderedFileReader *reader,
                                     std::vector<FileInfo> &&all_files,
-                                    const size_t read_array_size,
                                     const size_t io_uring_size,
                                     const size_t max_outstanding_requests) {
         struct io_uring ring;
@@ -214,9 +238,10 @@ private:
                 available_files.pop_front();
                 request->file = file;
                 request->offset = file->bytes_issued;
-                auto read_size = std::min(read_array_size * sizeof(T), file->file_size - file->bytes_issued);
+                auto read_size = std::min(READ_SIZE, file->file_size - file->bytes_issued);
                 request->read_size = read_size;
-                request->data = (T *) aligned_alloc(O_DIRECT_MULTIPLE, read_size);
+                request->data = reader->allocator.alloc();
+                LOG(INFO) << "Alloc " << request->data;
 
                 // issue a read on an opened file
                 struct io_uring_sqe *sqe;
@@ -244,9 +269,9 @@ private:
 
         free(request_pool);
         CHECK(completed_files.size() == all_files.size())
-                    << "Expected all files to be read when reader thread terminates: "
-                    << all_files.size() << " files total, yet "
-                    << completed_files.size() << " files are completed.";
+                        << "Expected all files to be read when reader thread terminates: "
+                        << all_files.size() << " files total, yet "
+                        << completed_files.size() << " files are completed.";
         for (auto &file: completed_files) {
             delete file;
         }

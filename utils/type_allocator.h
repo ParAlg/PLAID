@@ -7,6 +7,11 @@
 
 #include "parlay/alloc.h"
 
+template <size_t size>
+class AllocatorData {
+    char data[size];
+};
+
 /**
  * A modified parlay::type_allocator that allows the user to specify an arbitrary alignment
  * 

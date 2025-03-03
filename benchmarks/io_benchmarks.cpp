@@ -17,9 +17,7 @@
 const size_t SINGLE_IO_SIZE = 4 * (1UL << 20);
 
 void OrderedFileWriterTest(int argc, char **argv) {
-    struct WriterData {
-        unsigned char data[SAMPLE_SORT_BUCKET_SIZE];
-    };
+    using WriterData = AllocatorData<SAMPLE_SORT_BUCKET_SIZE>;
     using Allocator = AlignedTypeAllocator<WriterData, O_DIRECT_MULTIPLE>;
 
     CHECK(argc > 3) << "Expected an argument on total write size and number of buckets";
@@ -71,14 +69,14 @@ void UnorderedReadTest(int argc, char **argv) {
     LOG(INFO) << "Starting reading " << files.size() << " files " << expected_size
               << " bytes " << (expected_size >> 30) << " GiB";
     timer.next("start benchmark");
-    UnorderedFileReader<Type> reader;
+    using Reader = UnorderedFileReader<Type, READER_READ_SIZE>;
+    Reader reader;
     reader.PrepFiles(files);
     // FIXME: allocator is the bottleneck.
     //  jemalloc performs worse than glibc (1/3) while mimalloc is much faster.
     size_t io_uring_size = ParseLong(argv[3]);
     size_t num_io_threads = ParseLong(argv[4]);
-    reader.Start(1 << 20,
-                 io_uring_size * 2,
+    reader.Start(io_uring_size * 2,
                  io_uring_size,
                  num_io_threads);
     size_t remaining_size = expected_size;
@@ -90,7 +88,7 @@ void UnorderedReadTest(int argc, char **argv) {
         if (ptr == nullptr || size == 0) {
             break;
         }
-        free(ptr);
+        reader.allocator.free(ptr);
         remaining_size -= size * sizeof(Type);
         if (std::time(nullptr) - start_time >= time_limit) {
             timeout = true;

@@ -52,9 +52,7 @@ public:
 
 private:
 
-    struct BucketData {
-        char data[SAMPLE_SORT_BUCKET_SIZE];
-    };
+    using BucketData = AllocatorData<SAMPLE_SORT_BUCKET_SIZE>;
     using bucket_allocator = AlignedTypeAllocator<BucketData, O_DIRECT_MULTIPLE>;
 
     /**
@@ -97,7 +95,7 @@ private:
                     buckets[bucket_index] = (T *) bucket_allocator::alloc();
                 }
             }
-            free(data);
+            reader.allocator.free(data);
         }
         // cleanup partially full buckets
         for (size_t i = 0; i < num_buckets; i++) {
