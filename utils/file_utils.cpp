@@ -202,7 +202,7 @@ void ReadFileOnce(const std::string &file_name, void *buffer, size_t start, size
  *
  * @param file_name
  * @param read_size Number of bytes to be read
- * @return A pointer to the content of the file (needs to be freed by the caller using free)
+ * @return A pointer to the content of the file (needs to be freed by the caller using Free)
  */
 void *ReadEntireFile(const std::string &file_name, size_t read_size) {
     // align the read for O_DIRECT

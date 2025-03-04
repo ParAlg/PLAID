@@ -20,11 +20,11 @@ void AlignedAllocTest(int argc, char **argv) {
         LOG(INFO) << "Using alignment " << alignment;
         for (int rep = 0; rep < 3; rep++) {
             std::vector<void *> pointers(NUM_ALLOCATIONS, nullptr);
-            timer.next("Starting aligned alloc");
+            timer.next("Starting aligned Alloc");
             for (size_t i = 0; i < NUM_ALLOCATIONS; i++) {
                 pointers.push_back(std::aligned_alloc(alignment, SIZE));
             }
-            timer.next("Aligned alloc took");
+            timer.next("Aligned Alloc took");
             std::for_each(pointers.begin(), pointers.end(), free);
             pointers.clear();
             timer.next("Allocating with malloc");

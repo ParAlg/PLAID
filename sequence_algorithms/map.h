@@ -34,7 +34,7 @@ void Map(std::vector<FileInfo> files, std::string result_prefix, std::function<R
                 for (size_t i = 0; i < n; i++) {
                     result[i] = f(ptr[i]);
                 }
-                reader.allocator.free(ptr);
+                reader.allocator.Free(ptr);
             }
             writer.Push(std::shared_ptr<R>(result, free), n, file_index, element_index * sizeof(R));
         }

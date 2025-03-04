@@ -195,7 +195,7 @@ public:
      *
      * Do not submit arrays whose size is not a multiple of O_DIRECT_MULTIPLE unless necessary.
      * @param bucket_number
-     * @param pointer Ownership of pointer will now be assumed by the writer, which will deallocate it using free.
+     * @param pointer Ownership of pointer will now be assumed by the writer, which will deallocate it using Free.
      * @param count
      */
     void Write(size_t bucket_number, T *pointer, size_t count) {

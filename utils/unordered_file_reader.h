@@ -32,25 +32,62 @@ class UnorderedFileReader {
 public:
     typedef std::tuple<T *, size_t, size_t, size_t> BufferData;
 
-    using ReaderData = AllocatorData<READ_SIZE>;
-
     struct ReaderAllocator {
-        std::vector<T *> free_list;
-        std::mutex free_list_lock;
+        static constexpr size_t INITIAL_BUFFER_COUNT = 100;
+        static constexpr size_t ALLOCATION_BUFFERS = 100;
+        static constexpr size_t ALLOCATION_THRESHOLD = 4;
 
-        T *alloc() {
-            std::unique_lock lock(free_list_lock);
-            if (!free_list.empty()) {
-                auto ret = free_list.back();
-                free_list.pop_back();
-                return ret;
-            }
-            // FIXME: implement this
-            return nullptr;
+        std::vector<T *> free_list;
+        // Only one thread can touch the free list at a time
+        std::mutex free_list_lock;
+        // Only one thread can perform memory allocation at a time
+        std::mutex allocation_lock;
+        // Memory allocations. This should be much smaller
+        std::vector<T *> allocations;
+
+        ReaderAllocator(size_t num_buffers = INITIAL_BUFFER_COUNT) {
+            AllocateMoreMemory(INITIAL_BUFFER_COUNT);
         }
 
-        void free(T *ptr) {
-            std::unique_lock lock(free_list_lock);
+        ~ReaderAllocator() {
+            for (T* ptr : allocations) {
+                free(ptr);
+            }
+        }
+
+        void AllocateMoreMemory(size_t num_pointers) {
+            std::lock_guard<std::mutex> alloc_lock(allocation_lock);
+            if (free_list.size() > ALLOCATION_THRESHOLD) {
+                // Some other thread has already done the allocation
+                // FIXME: will this size call lead to a data race?
+                return;
+            }
+            T* ptr = (T*) std::aligned_alloc(O_DIRECT_MULTIPLE, READ_SIZE * num_pointers);
+            {
+                std::lock_guard<std::mutex> lock(free_list_lock);
+                for (size_t i = 0; i < num_pointers; i++) {
+                    free_list.push_back((T *) ((intptr_t) ptr + i * READ_SIZE));
+                }
+            }
+            allocations.push_back(ptr);
+        }
+
+        T *Alloc() {
+            while(true) {
+                std::unique_lock<std::mutex> lock(free_list_lock);
+                if (!free_list.empty()) {
+                    auto ret = free_list.back();
+                    free_list.pop_back();
+                    return ret;
+                }
+                // Free list is empty
+                lock.unlock();
+                AllocateMoreMemory(ALLOCATION_BUFFERS);
+            }
+        }
+
+        void Free(T *ptr) {
+            std::lock_guard<std::mutex> lock(free_list_lock);
             free_list.push_back(ptr);
         }
     };
@@ -240,8 +277,7 @@ private:
                 request->offset = file->bytes_issued;
                 auto read_size = std::min(READ_SIZE, file->file_size - file->bytes_issued);
                 request->read_size = read_size;
-                request->data = reader->allocator.alloc();
-                LOG(INFO) << "Alloc " << request->data;
+                request->data = reader->allocator.Alloc();
 
                 // issue a read on an opened file
                 struct io_uring_sqe *sqe;

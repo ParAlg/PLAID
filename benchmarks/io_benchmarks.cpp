@@ -88,7 +88,7 @@ void UnorderedReadTest(int argc, char **argv) {
         if (ptr == nullptr || size == 0) {
             break;
         }
-        reader.allocator.free(ptr);
+        reader.allocator.Free(ptr);
         remaining_size -= size * sizeof(Type);
         if (std::time(nullptr) - start_time >= time_limit) {
             timeout = true;

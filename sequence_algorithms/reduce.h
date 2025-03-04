@@ -31,7 +31,7 @@ R Reduce(std::vector<FileInfo> files, Monoid monoid) {
             for (size_t i = 0; i < n; i++) {
                 result = monoid(result, ptr[i]);
             }
-            reader.allocator.free(ptr);
+            reader.allocator.Free(ptr);
         }
         return result;
     }, 1), monoid);

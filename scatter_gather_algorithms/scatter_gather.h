@@ -95,7 +95,7 @@ private:
                     buckets[bucket_index] = (T *) bucket_allocator::alloc();
                 }
             }
-            reader.allocator.free(data);
+            reader.allocator.Free(data);
         }
         // cleanup partially full buckets
         for (size_t i = 0; i < num_buckets; i++) {
