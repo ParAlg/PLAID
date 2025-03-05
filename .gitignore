@@ -2,4 +2,4 @@ MODULE.bazel.lock
 .clwb
 .idea
 /bazel-*
-/perf.data*
+/*.data
