@@ -15,7 +15,7 @@ template<typename T>
 parlay::sequence<T> RandomSequence(size_t n, T max_num) {
     parlay::random_generator rng;
     auto limit = std::numeric_limits<T>();
-    std::uniform_int_distribution<T> dist(limit.min(), n == 0 ? limit.max() : max_num);
+    std::uniform_int_distribution<T> dist(limit.min(), max_num);
     parlay::sequence<T> sequence(n);
     parlay::parallel_for(0, n, [&](size_t i) {
         auto r = rng[i];
@@ -210,9 +210,6 @@ void GenerateUniformRandomNumbers(const std::string &prefix, size_t count, T lim
         std::random_device device;
         std::mt19937 rng(device());
         auto limit = std::numeric_limits<T>();
-        if (limit_max == 0) {
-            limit_max = limit.max();
-        }
         std::uniform_int_distribution<T> distribution(limit.min(), limit_max);
         while (true) {
             auto current = num_blocks--;
