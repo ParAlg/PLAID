@@ -5,6 +5,7 @@
 #include "absl/log/check.h"
 #include "utils/random_number_generator.h"
 #include "scatter_gather_algorithms/scatter_gather.h"
+#include "configs.h"
 
 void ScatterGatherNopTest(int argc, char **argv) {
     CHECK(argc == 4) << "Usage: " << argv[0] << " " << argv[1]
@@ -31,12 +32,8 @@ void ScatterGatherNopTest(int argc, char **argv) {
     std::cout << ((double)size / 1e9) / time << '\n';
 }
 
-constexpr size_t READER_DATA_SIZE = 4 << 20;
-using ReaderData = AllocatorData<READER_DATA_SIZE>;
-using reader_bucket_allocator = AlignedTypeAllocator<ReaderData, O_DIRECT_MULTIPLE>;
-
 template<typename T>
-void ScatterGatherThread(size_t num_buckets, const std::function<std::pair<T *, size_t>()> &f) {
+void ScatterGatherThread(size_t num_buckets, const std::function<std::pair<T *, size_t>()> &f, UnorderedFileReader<T> &reader) {
     using BucketData = AllocatorData<SAMPLE_SORT_BUCKET_SIZE>;
     using bucket_allocator = AlignedTypeAllocator<BucketData, O_DIRECT_MULTIPLE>;
     size_t buffer_size = SAMPLE_SORT_BUCKET_SIZE / sizeof(T);
@@ -63,7 +60,7 @@ void ScatterGatherThread(size_t num_buckets, const std::function<std::pair<T *, 
             }
         }
         // FIXME: every free triggers a munmap, which significantly slows things down
-        // free(data);
+        reader.allocator.Free(data);
     }
 }
 
@@ -73,32 +70,31 @@ void ScatterGatherNoIOTest(int argc, char **argv) {
     size_t size = 1ULL << ParseLong(argv[2]);
     size_t num_buckets = ParseLong(argv[3]);
     size_t n = size / sizeof(T);
-    size_t num_elements_per_pointer = READER_DATA_SIZE / sizeof(T);
+    size_t num_elements_per_pointer = READER_READ_SIZE / sizeof(T);
     size_t num_pointers = n / num_elements_per_pointer;
-    size_t size_per_pointer = READER_DATA_SIZE;
+    size_t size_per_pointer = READER_READ_SIZE;
     T *pointers[num_pointers];
     parlay::internal::timer timer("Scatter gather no IO");
+    UnorderedFileReader<T> reader;
     parlay::parallel_for(0, num_pointers, [&](size_t i) {
         auto seq = RandomSequence<T>(num_elements_per_pointer);
-        pointers[i] = (T *) reader_bucket_allocator::alloc();
+        pointers[i] = reader.allocator.Alloc();
         memcpy(pointers[i], seq.data(), size_per_pointer);
     });
     size_t cur = 0;
     std::mutex mutex;
     const auto generator = [&]() -> std::pair<T *, size_t> {
-        mutex.lock();
+        std::lock_guard<std::mutex> lock(mutex);
         if (cur == num_pointers) {
-            mutex.unlock();
             return {nullptr, 0};
         }
         T *result = pointers[cur];
         cur++;
-        mutex.unlock();
         return {result, num_elements_per_pointer};
     };
     timer.next("Preparations complete");
     parlay::parallel_for(0, parlay::num_workers(), [&](size_t i) {
-        ScatterGatherThread<T>(num_buckets, generator);
+        ScatterGatherThread<T>(num_buckets, generator, reader);
     }, 1);
     double time = timer.next_time();
     double throughput = (double)size / 1e9 / time;

@@ -35,7 +35,7 @@ public:
     struct ReaderAllocator {
         static constexpr size_t INITIAL_BUFFER_COUNT = 100;
         static constexpr size_t ALLOCATION_BUFFERS = 100;
-        static constexpr size_t ALLOCATION_THRESHOLD = 4;
+        static constexpr size_t ALLOCATION_THRESHOLD = 20;
 
         std::vector<T *> free_list;
         // Only one thread can touch the free list at a time
@@ -59,7 +59,7 @@ public:
             std::lock_guard<std::mutex> alloc_lock(allocation_lock);
             if (free_list.size() > ALLOCATION_THRESHOLD) {
                 // Some other thread has already done the allocation
-                // FIXME: will this size call lead to a data race?
+                // FIXME: this size call leads to a data race
                 return;
             }
             T* ptr = (T*) std::aligned_alloc(O_DIRECT_MULTIPLE, READ_SIZE * num_pointers);
