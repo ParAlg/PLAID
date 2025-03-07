@@ -50,8 +50,13 @@ void ScatterGatherThread(size_t num_buckets, const std::function<std::pair<T *, 
             break;
         }
         for (size_t i = 0; i < size; i++) {
-            // simply use mod to assign buckets
-            size_t bucket_index = (data[i] + i) % num_buckets;
+            // Two ways we can do this:
+            //  1. (data[i] + i) % num_buckets -> random assignment
+            //  2. i % num_buckets -> round-robin
+            // If we do 1, performance stays the same (40GB/s) regardless of bucket size.
+            // If we do 2, interesting things happen. BW goes from 80GB/s (1, 2, 4, ..., 256 buckets)
+            // to 40GB/s (512, 1024, 2048) to 14GB/s (4096).
+            size_t bucket_index = (i) % num_buckets;
             buckets[bucket_index][buffer_index[bucket_index]++] = data[i];
             if (buffer_index[bucket_index] == buffer_size) {
                 buffer_index[bucket_index] = 0;
@@ -59,7 +64,6 @@ void ScatterGatherThread(size_t num_buckets, const std::function<std::pair<T *, 
                 buckets[bucket_index] = (T *) bucket_allocator::alloc();
             }
         }
-        // FIXME: every free triggers a munmap, which significantly slows things down
         reader.allocator.Free(data);
     }
 }
