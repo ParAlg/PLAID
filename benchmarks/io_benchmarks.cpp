@@ -76,9 +76,11 @@ void UnorderedReadTest(int argc, char **argv) {
     //  jemalloc performs worse than glibc (1/3) while mimalloc is much faster.
     size_t io_uring_size = ParseLong(argv[3]);
     size_t num_io_threads = ParseLong(argv[4]);
-    reader.Start(io_uring_size * 2,
-                 io_uring_size,
-                 num_io_threads);
+    reader.Start(
+            UnorderedReaderConfig(
+                    num_io_threads,
+                    io_uring_size * 2,
+                    io_uring_size));
     size_t remaining_size = expected_size;
     const std::time_t time_limit = 30;
     const std::time_t start_time = std::time(nullptr);

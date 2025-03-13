@@ -21,6 +21,21 @@
 #include <map>
 #include <fcntl.h>
 
+struct UnorderedReaderConfig {
+    size_t num_threads = 2;
+    size_t max_requests = 64;
+    size_t queue_depth = 32;
+    size_t buffer_queue_size = 1024;
+
+    UnorderedReaderConfig() {}
+
+    UnorderedReaderConfig(size_t num_threads,
+                          size_t max_requests,
+                          size_t queue_depth) : num_threads(num_threads),
+                                                max_requests(max_requests),
+                                                queue_depth(queue_depth) {}
+};
+
 /**
  * Read a list of files in no particular order. File sizes are assumed to be multiples of O_DIRECT_MULTIPLE and
  * all bytes in the file are plain data (no end-of-file size markers are used and there are not padding bytes).
@@ -50,7 +65,7 @@ public:
         }
 
         ~ReaderAllocator() {
-            for (T* ptr : allocations) {
+            for (T *ptr: allocations) {
                 free(ptr);
             }
         }
@@ -62,7 +77,7 @@ public:
                 // FIXME: this size call leads to a data race
                 return;
             }
-            T* ptr = (T*) std::aligned_alloc(O_DIRECT_MULTIPLE, READ_SIZE * num_pointers);
+            T *ptr = (T *) std::aligned_alloc(O_DIRECT_MULTIPLE, READ_SIZE * num_pointers);
             {
                 std::lock_guard<std::mutex> lock(free_list_lock);
                 for (size_t i = 0; i < num_pointers; i++) {
@@ -73,7 +88,7 @@ public:
         }
 
         T *Alloc() {
-            while(true) {
+            while (true) {
                 std::unique_lock<std::mutex> lock(free_list_lock);
                 if (!free_list.empty()) {
                     auto ret = free_list.back();
@@ -100,9 +115,7 @@ public:
      * @param buffer_queue_size Size of the buffer queue.
      * Larger values may improve performance at the cost of increased memory usage
      */
-    explicit UnorderedFileReader(size_t buffer_queue_size = 1024) {
-        buffer_queue.SetSizeLimit(buffer_queue_size);
-    }
+    explicit UnorderedFileReader() = default;
 
     ~UnorderedFileReader() {
         is_open = false;
@@ -117,19 +130,18 @@ public:
         this->files = file_list;
     }
 
-    void Start(size_t max_outstanding_requests = IO_URING_BUFFER_SIZE * 2,
-               size_t io_uring_size = IO_URING_BUFFER_SIZE,
-               size_t num_io_threads = 1) {
-        CHECK(num_io_threads > 0) << "Need at least 1 thread";
-        active_threads = (int) num_io_threads;
-        for (size_t i = 0; i < num_io_threads; i++) {
+    void Start(const UnorderedReaderConfig &config = UnorderedReaderConfig()) {
+        CHECK(config.num_threads > 0) << "Need at least 1 thread";
+        buffer_queue.SetSizeLimit(config.buffer_queue_size);
+        active_threads = (int) config.num_threads;
+        for (size_t i = 0; i < config.num_threads; i++) {
             std::vector<FileInfo> file_list;
-            for (size_t j = i; j < files.size(); j += num_io_threads) {
+            for (size_t j = i; j < files.size(); j += config.num_threads) {
                 file_list.push_back(files[j]);
             }
             worker_threads.push_back(
                     std::make_unique<std::thread>(RunFileReaderWorker, this, std::move(file_list),
-                                                  io_uring_size, max_outstanding_requests));
+                                                  config.queue_depth, config.max_requests));
         }
     }
 

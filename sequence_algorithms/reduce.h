@@ -20,7 +20,7 @@ R Reduce(std::vector<FileInfo> files, Monoid monoid) {
     UnorderedFileReader<T> reader;
     reader.PrepFiles(files);
     // Use more IO threads to maximize bandwidth since this is the bottleneck, not the CPU
-    reader.Start(8, 4, 10);
+    reader.Start(UnorderedReaderConfig(10, 4, 8));
     return parlay::reduce(parlay::tabulate(parlay::num_workers(), [&](size_t worker_index) {
         R result = monoid.identity;
         while (true) {

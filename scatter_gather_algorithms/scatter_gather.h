@@ -20,12 +20,6 @@
 #include "utils/ordered_file_writer.h"
 #include "utils/type_allocator.h"
 
-struct UnorderedReaderConfig {
-    size_t num_threads = 2;
-    size_t max_requests = 64;
-    size_t queue_depth = 32;
-};
-
 struct BucketedWriterConfig {
     size_t num_threads = 2;
     // Need to be explicitly specified.
@@ -323,7 +317,7 @@ public:
                               const ScatterGatherConfig &config) {
         parlay::internal::timer timer("Scatter gather internal", true);
         reader.PrepFiles(input_files);
-        reader.Start();
+        reader.Start(config.reader_config);
         // FIXME: change this file name to a different one (possibly randomized?)
         size_t num_buckets = config.bucketed_writer_config.num_buckets;
         intermediate_writer.Initialize("spfx_", num_buckets, 1 << 20);
