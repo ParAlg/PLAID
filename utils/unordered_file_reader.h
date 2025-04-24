@@ -27,7 +27,7 @@ struct UnorderedReaderConfig {
     size_t queue_depth = 32;
     size_t buffer_queue_size = 1024;
 
-    UnorderedReaderConfig() {}
+    UnorderedReaderConfig() = default;
 
     UnorderedReaderConfig(size_t num_threads,
                           size_t max_requests,

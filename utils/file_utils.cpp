@@ -63,9 +63,7 @@ using std::filesystem::path;
 void GetFileInfo(std::vector<FileInfo> &info, bool eof_marker, bool compute_before_size) {
     parlay::parallel_for(0, info.size(), [&](size_t i) {
         if (info[i].file_size == 0) {
-            struct stat stat_buf;
-            SYSCALL(stat(info[i].file_name.c_str(), &stat_buf));
-            info[i].file_size = stat_buf.st_size;
+            info[i].file_size = GetFileSize(info[i].file_name);
         }
         if (eof_marker) {
             if (info[i].true_size == 0 && info[i].file_size > 0) {
@@ -250,4 +248,10 @@ double GetThroughput(const std::vector<FileInfo> &files, double time) {
         size += f.true_size == 0 ? f.file_size : f.true_size;
     }
     return GetThroughput(size, time);
+}
+
+inline size_t GetFileSize(const std::string &file_name) {
+    struct stat stat_buf;
+    SYSCALL(stat(file_name.c_str(), &stat_buf));
+    return stat_buf.st_size;
 }

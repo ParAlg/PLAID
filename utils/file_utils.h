@@ -12,6 +12,8 @@
 
 std::vector<FileInfo> FindFiles(const std::string &prefix, bool parallel = false);
 
+inline size_t GetFileSize(const std::string &file_name);
+
 void GetFileInfo(std::vector<FileInfo> &info, bool eof_marker = false, bool compute_before_size = true);
 
 void ComputeBeforeSize(std::vector<FileInfo> &files);

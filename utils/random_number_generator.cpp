@@ -174,7 +174,7 @@ void WriteNumbers(const std::string &prefix, size_t n, const T *data) {
 
 template<typename T>
 void WriteNumbers(const std::string &prefix, size_t n, const std::function<parlay::sequence<T>(size_t)> &generator) {
-    UnorderedFileWriter<T> writer(prefix, 4, 10);
+    UnorderedFileWriter<T> writer(prefix);
     constexpr auto WRITE_SIZE = 4 << 20;
     const auto step = WRITE_SIZE / sizeof(T);
     parlay::parallel_for(0, n / step, [&](size_t i) {

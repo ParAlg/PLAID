@@ -120,7 +120,10 @@ void UnorderedWriteTest(int argc, char **argv) {
     timer.next("experiment start");
     size_t io_uring_size = ParseLong(argv[4]);
     size_t num_io_threads = ParseLong(argv[5]);
-    UnorderedFileWriter<Type> writer(prefix, io_uring_size, num_io_threads);
+    UnorderedWriterConfig config;
+    config.io_uring_size = io_uring_size;
+    config.num_threads = num_io_threads;
+    UnorderedFileWriter<Type> writer(prefix, config);
     timer.next("preparing writes");
     size_t totalWriteSize = TOTAL_WRITE_SIZE;
     auto array = std::shared_ptr<Type>(

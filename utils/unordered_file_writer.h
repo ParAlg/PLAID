@@ -20,6 +20,25 @@
 #include <map>
 #include <fcntl.h>
 
+struct UnorderedWriterConfig {
+    size_t io_uring_size = IO_URING_BUFFER_SIZE;
+    size_t queue_size = 1000;
+    size_t num_threads = 1;
+    // Needed if only a file prefix is provided.
+    // If the list of file names is supplied, this is ignored.
+    size_t num_files = SSD_COUNT;
+
+    UnorderedWriterConfig() = default;
+
+    UnorderedWriterConfig(size_t io_uring_size,
+                          size_t queue_size,
+                          size_t num_threads,
+                          size_t num_files) : io_uring_size(io_uring_size),
+                                              queue_size(queue_size),
+                                              num_threads(num_threads),
+                                              num_files(num_files) {}
+};
+
 template<typename T>
 class UnorderedFileWriter {
 private:
@@ -27,40 +46,30 @@ private:
     struct OpenedFile;
 public:
 
-    explicit UnorderedFileWriter(const std::vector<std::string> &file_names,
-                                 size_t io_uring_size = IO_URING_BUFFER_SIZE,
-                                 size_t num_threads = 1) {
-        Start(file_names, io_uring_size, num_threads);
-    }
-
     explicit UnorderedFileWriter(const std::string &prefix,
-                                 size_t io_uring_size = IO_URING_BUFFER_SIZE,
-                                 size_t num_threads = 1,
-                                 size_t num_files = SSD_COUNT) : num_files(num_files) {
-        // FIXME: don't ues a magic number
-        wait_queue.SetSizeLimit(1000);
+                                 const UnorderedWriterConfig &config = UnorderedWriterConfig()) {
         std::vector<std::string> file_names;
         for (size_t i = 0; i < num_files; i++) {
             file_names.push_back(GetFileName(prefix, i));
         }
-        Start(file_names, io_uring_size, num_threads);
+        Start(file_names, config);
     }
 
     void Start(const std::vector<std::string> &file_names,
-               size_t io_uring_size = IO_URING_BUFFER_SIZE,
-               size_t num_threads = 1) {
+               const UnorderedWriterConfig &config) {
+        wait_queue.SetSizeLimit(config.queue_size);
         num_files = file_names.size();
         for (size_t i = 0; i < num_files; i++) {
             auto file = new OpenedFile(file_names[i]);
             global_files.push_back(file);
         }
-        for (size_t t = 0; t < num_threads; t++) {
+        for (size_t t = 0; t < config.num_threads; t++) {
             std::vector<OpenedFile *> file_list;
-            for (size_t file_index = t; file_index < num_files; file_index += num_threads) {
+            for (size_t file_index = t; file_index < num_files; file_index += config.num_threads) {
                 file_list.push_back(global_files[file_index]);
             }
             worker_threads.push_back(std::make_unique<std::thread>(
-                    RunFileWriterWorker, this, file_list, io_uring_size));
+                    RunFileWriterWorker, this, file_list, config.io_uring_size));
         }
     }
 
@@ -134,7 +143,7 @@ private:
         WriteRequest(std::shared_ptr<T> data, size_t size) : data(std::move(data)), size(size) {}
 
         WriteRequest(std::shared_ptr<T> data, size_t size, size_t file_index, size_t file_offset)
-            : data(std::move(data)), size(size), file_index(file_index), file_offset(file_offset) {}
+                : data(std::move(data)), size(size), file_index(file_index), file_offset(file_offset) {}
 
     };
 
