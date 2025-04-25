@@ -46,8 +46,15 @@ private:
     struct OpenedFile;
 public:
 
+    UnorderedFileWriter() = default;
+
     explicit UnorderedFileWriter(const std::string &prefix,
                                  const UnorderedWriterConfig &config = UnorderedWriterConfig()) {
+        Start(prefix, config);
+    }
+
+    void Start(const std::string &prefix,
+               const UnorderedWriterConfig &config = UnorderedWriterConfig()) {
         std::vector<std::string> file_names;
         for (size_t i = 0; i < num_files; i++) {
             file_names.push_back(GetFileName(prefix, i));
