@@ -56,7 +56,7 @@ public:
     void Start(const std::string &prefix,
                const UnorderedWriterConfig &config = UnorderedWriterConfig()) {
         std::vector<std::string> file_names;
-        for (size_t i = 0; i < num_files; i++) {
+        for (size_t i = 0; i < config.num_files; i++) {
             file_names.push_back(GetFileName(prefix, i));
         }
         Start(file_names, config);
@@ -66,10 +66,12 @@ public:
                const UnorderedWriterConfig &config) {
         wait_queue.SetSizeLimit(config.queue_size);
         num_files = file_names.size();
+        CHECK(num_files > 0);
         for (size_t i = 0; i < num_files; i++) {
             auto file = new OpenedFile(file_names[i]);
             global_files.push_back(file);
         }
+        CHECK(config.num_threads > 0);
         for (size_t t = 0; t < config.num_threads; t++) {
             std::vector<OpenedFile *> file_list;
             for (size_t file_index = t; file_index < num_files; file_index += config.num_threads) {
