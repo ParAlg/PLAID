@@ -158,6 +158,11 @@ parlay::sequence<T> GenerateExponentialDistribution(size_t count, double lambda)
     });
 }
 
+template parlay::sequence<uint64_t> GenerateExponentialDistribution(size_t, double);
+template parlay::sequence<int64_t> GenerateExponentialDistribution(size_t, double);
+template parlay::sequence<uint32_t> GenerateExponentialDistribution(size_t, double);
+template parlay::sequence<int32_t> GenerateExponentialDistribution(size_t, double);
+
 template<typename T>
 void WriteNumbers(const std::string &prefix, size_t n, const T *data) {
     UnorderedFileWriter<T> writer(prefix);

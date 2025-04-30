@@ -248,6 +248,6 @@ int main() {
         LOG(INFO) << "Testing io_uring together with writev on " << ssd_name;
         CHECK(test_io_uring_writev((ssd_name + "/io_uring_test").c_str()));
     }
-    LOG(INFO) << "All tests complete.";
+    LOG(INFO) << "All tests passed.";
     return 0;
 }
