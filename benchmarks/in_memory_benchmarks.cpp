@@ -49,10 +49,10 @@ void InMemoryPermutationTest(int argc, char **argv) {
     const size_t n = 1UL << strtol(argv[2], nullptr, 10);
     parlay::internal::timer timer("perm");
     parlay::sequence<Type> array(n, 0);
-    size_t step = n / THREAD_COUNT;
+    size_t step = n / parlay::num_workers();
     using Limit = std::numeric_limits<unsigned long>;
     parlay::parallel_for(
-            0, THREAD_COUNT,
+            0, parlay::num_workers(),
             [&](size_t i) {
                 size_t start = step * i, end = step * (i + 1);
                 std::random_device device;

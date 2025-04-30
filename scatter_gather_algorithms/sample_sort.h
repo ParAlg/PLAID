@@ -89,7 +89,7 @@ private:
             file_size += f.true_size;
         }
         // FIXME: assuming no bucket is skewed to the point where it is 3 times the average size
-        size_t min_sample_size = std::max(1UL, 4 * THREAD_COUNT * file_size / MAIN_MEMORY_SIZE);
+        size_t min_sample_size = std::max(1UL, 4 * parlay::num_workers() * file_size / MAIN_MEMORY_SIZE);
         // max sample size cannot exceed the number of elements; it should also not result in very tiny files
         size_t max_sample_size = std::max(1UL, std::min(file_size / sizeof(T), file_size / O_DIRECT_MULTIPLE));
         // FIXME: need more stuff here; ~128MB per bucket is temporary

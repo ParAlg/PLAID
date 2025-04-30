@@ -214,7 +214,7 @@ void GenerateUniformRandomNumbers(const std::string &prefix, size_t count, T lim
     UnorderedFileWriter<T> writer(prefix);
     CHECK(count % GRANULARITY == 0) << "Can only generate numbers that are a multiple of " << GRANULARITY;
     std::atomic<int64_t> num_blocks = (int64_t) (count / GRANULARITY);
-    parlay::parallel_for(0, THREAD_COUNT, [&](size_t _) {
+    parlay::parallel_for(0, parlay::num_workers(), [&](size_t _) {
         std::random_device device;
         std::mt19937 rng(device());
         auto limit = std::numeric_limits<T>();

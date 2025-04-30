@@ -45,9 +45,10 @@ parlay::sequence<T> RandomBatchRead(const std::vector<FileInfo> &files,
         SYSCALL(fds[i]);
     }, 1);
 
-    const size_t segment_size = (requests.size() + THREAD_COUNT - 1) / THREAD_COUNT;
+    const size_t num_threads = parlay::num_workers();
+    const size_t segment_size = (requests.size() + num_threads - 1) / num_threads;
 
-    return parlay::flatten(parlay::map(parlay::iota(THREAD_COUNT), [&](size_t segment) {
+    return parlay::flatten(parlay::map(parlay::iota(num_threads), [&](size_t segment) {
         const size_t segment_start = segment_size * segment;
         const size_t segment_end = std::min(segment_size * (segment + 1), requests.size());
         if (segment_end <= segment_start) {
