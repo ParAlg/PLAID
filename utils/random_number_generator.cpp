@@ -218,6 +218,9 @@ void GenerateUniformRandomNumbers(const std::string &prefix, size_t count, T lim
         std::random_device device;
         std::mt19937 rng(device());
         auto limit = std::numeric_limits<T>();
+        if (limit_max == 0) {
+            limit_max = limit.max();
+        }
         std::uniform_int_distribution<T> distribution(limit.min(), limit_max);
         while (true) {
             auto current = num_blocks--;
