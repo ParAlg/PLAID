@@ -15,6 +15,9 @@ template<typename T>
 parlay::sequence<T> RandomSequence(size_t n, T max_num) {
     parlay::random_generator rng;
     auto limit = std::numeric_limits<T>();
+    if (max_num == 0) {
+        max_num = limit.max();
+    }
     std::uniform_int_distribution<T> dist(limit.min(), max_num);
     parlay::sequence<T> sequence(n);
     parlay::parallel_for(0, n, [&](size_t i) {
