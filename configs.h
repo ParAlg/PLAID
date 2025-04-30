@@ -24,7 +24,11 @@ constexpr size_t SAMPLE_SORT_BUCKET_SIZE = 4 << 10;
 
 constexpr size_t IO_VECTOR_SIZE = 1024;
 
-constexpr size_t O_DIRECT_MULTIPLE = 512;
+// This is machine-dependent:
+// On Google Cloud machines, keep this value.
+// On baldr, aligned memory allocations are not required.
+// On other systems, make this 512 and see if it works.
+constexpr size_t O_DIRECT_MULTIPLE = 4096;
 // It should never be necessary to change this unless O_DIRECT_MULTIPLE is very large
 constexpr size_t METADATA_SIZE = 2;
 constexpr size_t IO_URING_BUFFER_SIZE = 64;
