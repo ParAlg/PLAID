@@ -59,8 +59,7 @@ bool io_uring_usable() {
     return false;
 }
 
-bool test_io_uring(const char *file_name, int *data, size_t array_size, size_t file_size) {
-    parlay::internal::timer timer("test_io_uring");
+bool test_io_uring(const char *file_name, int *data, size_t array_size, size_t file_size, size_t alignment = O_DIRECT_MULTIPLE) {
     int fd = open(file_name, O_WRONLY | O_CREAT | O_DIRECT, 0744);
     SYSCALL(fd);
 
@@ -75,13 +74,12 @@ bool test_io_uring(const char *file_name, int *data, size_t array_size, size_t f
     }
 
     std::set<size_t> expected_data;
-    timer.next("Start writing");
     for (size_t i = 0; i < file_size / array_size; i++) {
         struct io_uring_sqe *sqe;
         do {
             sqe = io_uring_get_sqe(&ring);
         } while (sqe == nullptr);
-        int *write_data = (int *) aligned_alloc(O_DIRECT_MULTIPLE, array_size);
+        int *write_data = (int *) aligned_alloc(alignment, array_size);
         memcpy(write_data, data, array_size);
         write_data[0] = (int) i + 1;
         io_uring_prep_write(sqe, fd, write_data, array_size, i * array_size);
@@ -89,7 +87,6 @@ bool test_io_uring(const char *file_name, int *data, size_t array_size, size_t f
         expected_data.insert(i + 1);
         SYSCALL(io_uring_submit(&ring));
     }
-    timer.next("Wait for writes");
     for (size_t i = 0; i < file_size / array_size; i++) {
         struct io_uring_cqe *cqe;
         SYSCALL(io_uring_wait_cqe(&ring, &cqe));
@@ -105,24 +102,21 @@ bool test_io_uring(const char *file_name, int *data, size_t array_size, size_t f
         LOG(ERROR) << "Not all requests are reaped";
         goto cleanup;
     }
-    timer.next("All writes completed");
     SYSCALL(close(fd));
     fd = open(file_name, O_RDONLY | O_DIRECT);
     SYSCALL(fd);
-    timer.next("Start reading");
     int **buffers = (int **) malloc(file_size / array_size * sizeof(int *));
     for (size_t i = 0; i < file_size / array_size; i++) {
         struct io_uring_sqe *sqe;
         do {
             sqe = io_uring_get_sqe(&ring);
         } while (sqe == nullptr);
-        int *read_buffer = (int *) aligned_alloc(O_DIRECT_MULTIPLE, array_size);
+        int *read_buffer = (int *) aligned_alloc(alignment, array_size);
         buffers[i] = read_buffer;
         io_uring_prep_read(sqe, fd, read_buffer, array_size, i * array_size);
         io_uring_sqe_set_data(sqe, (void *) i);
         SYSCALL(io_uring_submit(&ring));
     }
-    timer.next("Waiting for reads");
     for (size_t i = 0; i < file_size / array_size; i++) {
         struct io_uring_cqe *cqe;
         SYSCALL(io_uring_wait_cqe(&ring, &cqe));
@@ -136,7 +130,6 @@ bool test_io_uring(const char *file_name, int *data, size_t array_size, size_t f
             goto cleanup;
         }
     }
-    timer.next("Reads completed");
     free(buffers);
     io_uring_queue_exit(&ring);
     SYSCALL(close(fd));
@@ -249,5 +242,32 @@ int main() {
         CHECK(test_io_uring_writev((ssd_name + "/io_uring_test").c_str()));
     }
     LOG(INFO) << "All tests passed.";
+
+    std::cout << "Check SSD O_DIRECT memory alignment requirements? Note that this may render the SSD unusable. "
+              << "1: YES. 0: NO" << std::endl;
+    int response;
+    std::cin >> response;
+    if (response) {
+        for (auto ssd_name : GetSSDList()) {
+            constexpr size_t MAX_ALIGN = 4096, MIN_ALIGN = 8;
+            for (size_t alignment = MAX_ALIGN; alignment >= MIN_ALIGN; alignment /= 2) {
+                auto file_name = ssd_name + "/io_uring_test";
+                bool result = test_io_uring(
+                    file_name.c_str(),
+                    data,
+                    ARRAY_SIZE,
+                    // Try 10 times in case some of the malloc calls happened to have better alignment
+                    ARRAY_SIZE * 10,
+                    alignment);
+                if (!result) {
+                    LOG(ERROR) << "Test failed on " << ssd_name << " at alignment " << alignment;
+                    break;
+                }
+                if (alignment == MIN_ALIGN) {
+                    LOG(INFO) << ssd_name << " does not seem to care about memory alignment";
+                }
+            }
+        }
+    }
     return 0;
 }
