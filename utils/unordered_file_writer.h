@@ -27,6 +27,7 @@ struct UnorderedWriterConfig {
     // Needed if only a file prefix is provided.
     // If the list of file names is supplied, this is ignored.
     size_t num_files = SSD_COUNT;
+    bool allow_expand = false;
 
     UnorderedWriterConfig() = default;
 
@@ -55,6 +56,7 @@ public:
 
     void Start(const std::string &prefix,
                const UnorderedWriterConfig &config = UnorderedWriterConfig()) {
+        file_name_prefix = prefix;
         std::vector<std::string> file_names;
         for (size_t i = 0; i < config.num_files; i++) {
             file_names.push_back(GetFileName(prefix, i));
@@ -134,11 +136,25 @@ public:
         return num_files;
     }
 
+    bool AllowExpand() {
+        return allow_expand;
+    }
+
+    void ExpandFiles(size_t new_num_files) {
+        CHECK(this->num_files < new_num_files);
+        while (this->global_files.size() < new_num_files) {
+            global_files.push_back(new OpenedFile(GetFileName(file_name_prefix, global_files.size())));
+        }
+        num_files = global_files.size();
+    }
+
 private:
+    bool allow_expand = false;
     size_t num_files = 0;
     std::vector<std::unique_ptr<std::thread>> worker_threads;
     SimpleQueue<WriteRequest *> wait_queue;
     std::vector<OpenedFile *> global_files;
+    std::string file_name_prefix;
 
     struct WriteRequest {
         std::shared_ptr<T> data;
@@ -240,7 +256,14 @@ private:
                 }
                 OpenedFile *file;
                 if (request->file_index != (size_t) -1) {
-                    CHECK(request->file_index < writer->num_files);
+                    if (request->file_index >= writer->num_files) {
+                        [[unlikely]]
+                        if (writer->allow_expand) {
+                            writer->ExpandFiles(request->file_index);
+                        } else {
+                            CHECK(request->file_index < writer->num_files);
+                        }
+                    }
                     file = writer->global_files[request->file_index];
                 } else {
                     file = files[current_file];
