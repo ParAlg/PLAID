@@ -77,7 +77,7 @@ public:
                 // FIXME: this size call leads to a data race
                 return;
             }
-            T *ptr = (T *) std::aligned_alloc(O_DIRECT_MULTIPLE, READ_SIZE * num_pointers);
+            T *ptr = (T *) std::aligned_alloc(O_DIRECT_MEMORY_ALIGNMENT, READ_SIZE * num_pointers);
             {
                 std::lock_guard<std::mutex> lock(free_list_lock);
                 for (size_t i = 0; i < num_pointers; i++) {

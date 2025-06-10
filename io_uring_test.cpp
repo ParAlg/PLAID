@@ -25,7 +25,7 @@ bool simple_write_test(const char *file_name, const void *data, int data_size) {
     // now make sure the content written to the file can be read
     if (success) {
         fd = open(file_name, O_RDONLY | O_DIRECT);
-        void *buffer = aligned_alloc(O_DIRECT_MULTIPLE, data_size);
+        void *buffer = aligned_alloc(O_DIRECT_MEMORY_ALIGNMENT, data_size);
         res = read(fd, buffer, data_size);
         SYSCALL(res);
         if (res != data_size) {
@@ -145,7 +145,7 @@ bool test_io_uring_writev(const char *file_name) {
     auto make_io_vectors = [](size_t num_vectors, bool fill) {
         auto *io_vectors = static_cast<iovec *>(malloc(sizeof(struct iovec) * num_vectors));
         for (size_t vec_index = 0; vec_index < num_vectors; vec_index++) {
-            io_vectors[vec_index].iov_base = std::aligned_alloc(O_DIRECT_MULTIPLE, IO_VECTOR_BYTES);
+            io_vectors[vec_index].iov_base = std::aligned_alloc(O_DIRECT_MEMORY_ALIGNMENT, IO_VECTOR_BYTES);
             io_vectors[vec_index].iov_len = IO_VECTOR_BYTES;
             if (!fill) {
                 continue;
@@ -217,7 +217,7 @@ int main() {
     const size_t FILE_SIZE = 1UL << 28;
     const size_t N = 1UL << 20;
     const size_t ARRAY_SIZE = N * sizeof(int);
-    int *data = (int *) aligned_alloc(O_DIRECT_MULTIPLE, ARRAY_SIZE);
+    int *data = (int *) aligned_alloc(O_DIRECT_MEMORY_ALIGNMENT, ARRAY_SIZE);
     for (size_t j = 0; j < N; j++) {
         data[j] = (int) (j * j) - 3;
     }

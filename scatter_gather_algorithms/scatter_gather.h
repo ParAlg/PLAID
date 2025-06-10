@@ -247,7 +247,7 @@ private:
                     const auto &file_info = bucket_list[index];
                     next.fd = open(file_info.file_name.c_str(), O_RDONLY | O_DIRECT);
                     SYSCALL(next.fd);
-                    next.buffer = (T *) std::aligned_alloc(O_DIRECT_MULTIPLE, file_info.file_size);
+                    next.buffer = (T *) std::aligned_alloc(O_DIRECT_MEMORY_ALIGNMENT, file_info.file_size);
                     next.info = file_info;
                     next.info.file_index = index;
                     auto sqe = io_uring_get_sqe(&read_ring);

@@ -170,7 +170,7 @@ void nop(void *ptr) {}
  * @param n Number of items to be generated
  */
 void GenerateSmallSample(const std::string &prefix, size_t n) {
-    auto nums = (size_t *) aligned_alloc(O_DIRECT_MULTIPLE, n * sizeof(size_t));
+    auto nums = (size_t *) aligned_alloc(O_DIRECT_MEMORY_ALIGNMENT, n * sizeof(size_t));
     {
         auto perm = parlay::random_permutation(n, parlay::random(std::random_device()()));
         parlay::parallel_for(0, n, [&](size_t i) {

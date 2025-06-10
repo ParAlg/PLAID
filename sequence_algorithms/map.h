@@ -34,7 +34,7 @@ void Map(std::vector<FileInfo> files, std::string result_prefix, std::function<R
                 }
                 result = (R *) ptr;
             } else {
-                result = (R *) aligned_alloc(O_DIRECT_MULTIPLE, n * sizeof(R));
+                result = (R *) aligned_alloc(O_DIRECT_MEMORY_ALIGNMENT, n * sizeof(R));
                 for (size_t i = 0; i < n; i++) {
                     result[i] = f(ptr[i]);
                 }

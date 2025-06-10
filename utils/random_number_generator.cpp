@@ -172,7 +172,7 @@ void WriteNumbers(const std::string &prefix, size_t n, const T *data) {
     constexpr auto WRITE_SIZE = 4 << 20;
     const auto step = WRITE_SIZE / sizeof(T);
     for (size_t i = 0; i < n; i += step) {
-        T *buffer = (T *) std::aligned_alloc(O_DIRECT_MULTIPLE, WRITE_SIZE);
+        T *buffer = (T *) std::aligned_alloc(O_DIRECT_MEMORY_ALIGNMENT, WRITE_SIZE);
         memcpy(buffer, data + i, WRITE_SIZE);
         std::shared_ptr<T> temp(buffer, free);
         writer.Push(temp, step);
@@ -186,7 +186,7 @@ void WriteNumbers(const std::string &prefix, size_t n, const std::function<parla
     constexpr auto WRITE_SIZE = 4 << 20;
     const auto step = WRITE_SIZE / sizeof(T);
     parlay::parallel_for(0, n / step, [&](size_t i) {
-        T *buffer = (T *) std::aligned_alloc(O_DIRECT_MULTIPLE, WRITE_SIZE);
+        T *buffer = (T *) std::aligned_alloc(O_DIRECT_MEMORY_ALIGNMENT, WRITE_SIZE);
         auto seq = generator(step);
         memcpy(buffer, seq.data(), WRITE_SIZE);
         std::shared_ptr<T> temp(buffer, free);
@@ -227,7 +227,7 @@ void GenerateUniformRandomNumbers(const std::string &prefix, size_t count, T lim
             if (current <= 0) {
                 return;
             }
-            std::shared_ptr<T> result((T *) aligned_alloc(O_DIRECT_MULTIPLE, GRANULARITY * sizeof(T)), free);
+            std::shared_ptr<T> result((T *) aligned_alloc(O_DIRECT_MEMORY_ALIGNMENT, GRANULARITY * sizeof(T)), free);
             for (size_t i = 0; i < GRANULARITY; i++) {
                 result.get()[i] = distribution(rng);
             }

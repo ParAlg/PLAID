@@ -127,7 +127,7 @@ void UnorderedWriteTest(int argc, char **argv) {
     timer.next("preparing writes");
     size_t totalWriteSize = TOTAL_WRITE_SIZE;
     auto array = std::shared_ptr<Type>(
-            (Type *) aligned_alloc(O_DIRECT_MULTIPLE, SINGLE_IO_SIZE), free);
+            (Type *) aligned_alloc(O_DIRECT_MEMORY_ALIGNMENT, SINGLE_IO_SIZE), free);
     for (size_t i = 0; i < SINGLE_IO_SIZE / sizeof(Type); i++) {
         array.get()[i] = (Type) (i * i - 5 * i - 1);
     }
@@ -186,7 +186,7 @@ void LargeReadTest(int argc, char **argv) {
         iovec io_vectors[NUM_IO_VECTORS];
 
         explicit Buffer(size_t size) {
-            buffer = (T *) aligned_alloc(O_DIRECT_MULTIPLE, size);
+            buffer = (T *) aligned_alloc(O_DIRECT_MEMORY_ALIGNMENT, size);
             for (size_t i = 0; i < NUM_IO_VECTORS; i++) {
                 char *ptr = (char *) buffer;
                 io_vectors[i].iov_base = ptr + (size / NUM_IO_VECTORS) * i;

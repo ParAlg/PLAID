@@ -205,7 +205,7 @@ void ReadFileOnce(const std::string &file_name, void *buffer, size_t start, size
 void *ReadEntireFile(const std::string &file_name, size_t read_size) {
     // align the read for O_DIRECT
     read_size = AlignUp(read_size);
-    void *buffer = std::aligned_alloc(O_DIRECT_MULTIPLE, read_size);
+    void *buffer = std::aligned_alloc(O_DIRECT_MEMORY_ALIGNMENT, read_size);
     int fd = open(file_name.c_str(), O_RDONLY | O_DIRECT);
     SYSCALL(fd);
     // reads cannot exceed 2147479552 bytes on Linux, so we need this loop to perform multiple reads

@@ -308,7 +308,7 @@ private:
             if (target_write_size - write_size < METADATA_SIZE) {
                 target_write_size += O_DIRECT_MULTIPLE;
             }
-            auto *write_buffer = (unsigned char *)std::aligned_alloc(O_DIRECT_MULTIPLE, target_write_size);
+            auto *write_buffer = (unsigned char *)std::aligned_alloc(O_DIRECT_MEMORY_ALIGNMENT, target_write_size);
             size_t buffer_position = 0;
             for (size_t i = 0; i < misaligned_pointers.size(); i++) {
                 auto [pointer, count] = misaligned_pointers[i];
