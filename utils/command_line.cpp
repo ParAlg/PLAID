@@ -87,4 +87,26 @@ double ParseDouble(char *string) {
     return strtod(string, nullptr);
 }
 
+int ProgramEntry(int argc, char **argv, std::map<std::string, std::function<void(int, char **)>> &commands) {
+    ParseGlobalArguments(argc, argv);
+    if (argc < 2) {
+        show_usage:
+        std::string valid_commands;
+        for (const auto& [k, v] : commands) {
+            valid_commands += k + "|";
+        }
+        valid_commands.erase(valid_commands.size() - 1);
+        LOG(ERROR) << "Usage: " << argv[0] << " " << valid_commands << " <command-specific options>";
+        return 1;
+    }
+    if (commands.count(argv[1])) {
+        auto command = commands[argv[1]];
+        command(argc, argv);
+    } else {
+        LOG(ERROR) << "Command not found";
+        goto show_usage;
+    }
+    return 0;
+}
+
 
