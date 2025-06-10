@@ -68,6 +68,7 @@ public:
                const UnorderedWriterConfig &config) {
         wait_queue.SetSizeLimit(config.queue_size);
         num_files = file_names.size();
+        allow_expand = config.allow_expand;
         CHECK(num_files > 0);
         for (size_t i = 0; i < num_files; i++) {
             auto file = new OpenedFile(file_names[i]);
@@ -259,7 +260,7 @@ private:
                     if (request->file_index >= writer->num_files) {
                         [[unlikely]]
                         if (writer->allow_expand) {
-                            writer->ExpandFiles(request->file_index);
+                            writer->ExpandFiles(request->file_index + 1);
                         } else {
                             CHECK(request->file_index < writer->num_files);
                         }
