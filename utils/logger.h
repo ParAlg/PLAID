@@ -26,4 +26,8 @@
 
 void InitLogger();
 
+inline size_t GetFileOffset(int fd) {
+    return lseek(fd, 0, SEEK_CUR);
+}
+
 #endif //SORTING_LOGGER_H

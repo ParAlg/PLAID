@@ -11,7 +11,6 @@
 #include "parlay/parallel.h"
 
 #include "file_utils.h"
-#include "./configs.h"
 #include "utils/logger.h"
 
 using std::filesystem::directory_iterator;
