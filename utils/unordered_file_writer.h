@@ -179,7 +179,7 @@ private:
         size_t bytes_written = 0;
 
         explicit OpenedFile(const std::string &name) {
-            fd = open(name.c_str(), O_DIRECT | O_WRONLY | O_CREAT, 0744);
+            fd = open(name.c_str(), O_DIRECT | O_WRONLY | O_CREAT, 0644);
             SYSCALL(fd);
         }
 

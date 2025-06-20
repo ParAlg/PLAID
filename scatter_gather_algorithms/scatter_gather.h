@@ -116,7 +116,7 @@ private:
         T *buffer = (T *) ReadEntireFile(file_info.file_name, file_info.file_size);
         size_t n = file_info.true_size / sizeof(T);
         processor(&buffer, n);
-        int fd = open(target_file.c_str(), O_WRONLY | O_DIRECT | O_CREAT, 0744);
+        int fd = open(target_file.c_str(), O_WRONLY | O_DIRECT | O_CREAT, 0644);
         SYSCALL(fd);
         SYSCALL(write(fd, buffer, file_info.file_size));
         close(fd);
@@ -166,7 +166,7 @@ private:
                     auto [index, pointer] = res;
                     FileInfo file = bucket_list[index];
                     auto file_name = GetFileName(result_prefix, index);
-                    int fd = open(file_name.c_str(), O_WRONLY | O_DIRECT | O_CREAT, 0744);
+                    int fd = open(file_name.c_str(), O_WRONLY | O_DIRECT | O_CREAT, 0644);
                     SYSCALL(fd);
                     SYSCALL(write(fd, pointer, file.file_size));
                     close(fd);
@@ -264,7 +264,7 @@ private:
                     current.info.file_name = GetFileName(result_prefix, current.info.file_index);
                     int fd = open(current.info.file_name.c_str(),
                                   O_DIRECT | O_WRONLY | O_CREAT,
-                                  0744);
+                                  0644);
                     SYSCALL(fd);
                     current.fd = fd;
                     need_submit_write = true;

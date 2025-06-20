@@ -13,7 +13,7 @@
 bool simple_write_test(const char *file_name, const void *data, int data_size) {
     bool success = true;
     LOG(INFO) << "Testing write to " << file_name;
-    int fd = open(file_name, O_WRONLY | O_CREAT | O_DIRECT, 0744);
+    int fd = open(file_name, O_WRONLY | O_CREAT | O_DIRECT, 0644);
     SYSCALL(fd);
     auto res = write(fd, data, data_size);
     SYSCALL(res);
@@ -60,7 +60,7 @@ bool io_uring_usable() {
 }
 
 bool test_io_uring(const char *file_name, int *data, size_t array_size, size_t file_size, size_t alignment = O_DIRECT_MULTIPLE) {
-    int fd = open(file_name, O_WRONLY | O_CREAT | O_DIRECT, 0744);
+    int fd = open(file_name, O_WRONLY | O_CREAT | O_DIRECT, 0644);
     SYSCALL(fd);
 
     struct io_uring ring;
@@ -161,7 +161,7 @@ bool test_io_uring_writev(const char *file_name) {
 
     for (size_t num_vectors = 1; num_vectors <= IO_VECTOR_SIZE; num_vectors *= 2) {
         LOG(INFO) << "Using " << num_vectors << " IO vectors";
-        int fd = open(file_name, O_WRONLY | O_CREAT | O_DIRECT, 0744);
+        int fd = open(file_name, O_WRONLY | O_CREAT | O_DIRECT, 0644);
         SYSCALL(fd);
         struct iovec *io_vectors = make_io_vectors(num_vectors, true);
 
