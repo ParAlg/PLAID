@@ -70,6 +70,12 @@ public:
         num_files = file_names.size();
         allow_expand = config.allow_expand;
         CHECK(num_files > 0);
+        if (num_files < config.num_threads) {
+            [[unlikely]]
+            LOG(WARNING)
+                << "Writing to " << num_files << " files with " << config.num_threads << " threads. "
+                << "Some threads will not get a file.";
+        }
         for (size_t i = 0; i < num_files; i++) {
             auto file = new OpenedFile(file_names[i]);
             global_files.push_back(file);
@@ -79,6 +85,9 @@ public:
             std::vector<OpenedFile *> file_list;
             for (size_t file_index = t; file_index < num_files; file_index += config.num_threads) {
                 file_list.push_back(global_files[file_index]);
+            }
+            if (file_list.empty()) {
+                continue;
             }
             worker_threads.push_back(std::make_unique<std::thread>(
                     RunFileWriterWorker, this, file_list, config.io_uring_size));
@@ -197,6 +206,7 @@ private:
     static void RunFileWriterWorker(UnorderedFileWriter *writer,
                                     const std::vector<OpenedFile *> files,
                                     const size_t io_uring_size) {
+        CHECK(!files.empty());
         struct io_uring ring;
         SYSCALL(io_uring_queue_init(io_uring_size, &ring, IORING_SETUP_SINGLE_ISSUER));
 
