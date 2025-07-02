@@ -25,3 +25,36 @@ Run the following commands.
 ```shell
 ./bazel-bin/speed_test <name of test>
 ```
+
+## Reproducibility
+
+Note that there can be reproducibility issues since `io_uring` is still under active development.
+
+For example, we ran the following commands on the same virtual machine managed by KVM.
+```shell
+./bazel-bin/sample_sort gen 28 nums 1
+./bazel-bin/sample_sort run nums result
+```
+
+The VM has the following hardware specs:
+```
+CPU: 30 virtual cores of a Ryzen 3950X
+RAM: 16GB
+```
+
+We start with a fresh installation of Fedora KDE without any updates. It runs the following software:
+```
+Kernel: 6.11.4
+gcc: 14.3.1
+liburing: 2.6-2
+```
+
+The commands executed without error.
+
+We then upgrade the machine to use the latest software provided by Fedora 41. We get
+```
+Kernel: 6.15.3
+gcc: 14.3.1
+liburing: 2.6-2
+```
+The program now segfaults at the sample step.
