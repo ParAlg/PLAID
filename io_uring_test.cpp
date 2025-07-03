@@ -59,7 +59,11 @@ bool io_uring_usable() {
     return false;
 }
 
-bool test_io_uring(const char *file_name, int *data, size_t array_size, size_t file_size, size_t alignment = O_DIRECT_MULTIPLE) {
+bool test_io_uring(const char *file_name,
+                   int *data,
+                   size_t array_size,
+                   size_t file_size,
+                   size_t alignment = O_DIRECT_MEMORY_ALIGNMENT) {
     int fd = open(file_name, O_WRONLY | O_CREAT | O_DIRECT, 0644);
     SYSCALL(fd);
 
@@ -212,7 +216,7 @@ bool test_io_uring_writev(const char *file_name) {
     return true;
 }
 
-int main() {
+void run_main_test() {
     LOG(INFO) << "Test setup";
     const size_t FILE_SIZE = 1UL << 28;
     const size_t N = 1UL << 20;
@@ -248,17 +252,17 @@ int main() {
     int response;
     std::cin >> response;
     if (response) {
-        for (auto ssd_name : GetSSDList()) {
+        for (const auto &ssd_name: GetSSDList()) {
             constexpr size_t MAX_ALIGN = 4096, MIN_ALIGN = 8;
             for (size_t alignment = MAX_ALIGN; alignment >= MIN_ALIGN; alignment /= 2) {
                 auto file_name = ssd_name + "/io_uring_test";
                 bool result = test_io_uring(
-                    file_name.c_str(),
-                    data,
-                    ARRAY_SIZE,
-                    // Try 10 times in case some of the malloc calls happened to have better alignment
-                    ARRAY_SIZE * 10,
-                    alignment);
+                        file_name.c_str(),
+                        data,
+                        ARRAY_SIZE,
+                        // Try 10 times in case some of the malloc calls happened to have better alignment
+                        ARRAY_SIZE * 10,
+                        alignment);
                 if (!result) {
                     LOG(ERROR) << "Test failed on " << ssd_name << " at alignment " << alignment;
                     break;
@@ -269,5 +273,22 @@ int main() {
             }
         }
     }
-    return 0;
+}
+
+/**
+ * Test a combination of number of io_uring entries and number of threads.
+ * This number seems to be dependent on the kernel version.
+ */
+void run_io_uring_init_entries_test() {
+    constexpr size_t entries = 20000;
+    constexpr size_t threads = 2;
+    struct io_uring rings[threads];
+    for (size_t i = 0; i < threads; i++) {
+        SYSCALL(io_uring_queue_init(entries, &rings[i], IORING_SETUP_SINGLE_ISSUER));
+    }
+    exit(0);
+}
+
+int main() {
+    run_main_test();
 }
