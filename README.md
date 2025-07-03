@@ -58,3 +58,5 @@ gcc: 14.3.1
 liburing: 2.6-2
 ```
 The program now segfaults at the sample step.
+
+Turns out this is because there is not sufficient memory to be locked (i.e. marked as unswappable) by `io_uring`. Curiously, in both scenarios, `ulimit -l` is set to 8192. A kernel update likely increased the memory consumption per entry (due to new `io_uring` features) and resulted in what we observed.

@@ -65,9 +65,10 @@ parlay::sequence<T> RandomBatchRead(const std::vector<FileInfo> &files,
         parlay::sequence<T> results;
         results.reserve(segment_end - segment_start);
 
-        const unsigned IO_URING_ENTRIES = 4096;
+        // If there are too many threads, io_uring_queue_init will fail due to insufficient locked memory
+        const unsigned IO_URING_ENTRIES = 512;
         struct io_uring ring;
-        io_uring_queue_init(IO_URING_ENTRIES, &ring, IORING_SETUP_SINGLE_ISSUER);
+        SYSCALL(io_uring_queue_init(IO_URING_ENTRIES, &ring, IORING_SETUP_SINGLE_ISSUER));
         size_t i = segment_start, pending_requests = 0, requests_in_ring = 0;
         while (i < segment_end || requests_in_ring > 0) {
             // there are available buffers and remaining requests; keep submitting
