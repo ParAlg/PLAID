@@ -1,5 +1,7 @@
 # PALID: Parallel Library for Asynchronous I/O Devices
 
+This repository implements the external-memory primitives in [Scaling Parallel Algorithms to Massive Datasets using Multi-SSD Machines (SPAA 2025)](https://dl.acm.org/doi/10.1145/3694906.3743308).
+
 This project is built with bazel. Just build everything with `bazel build -c opt //:all`
 
 CMake support is planned but not implemented yet.
