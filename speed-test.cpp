@@ -12,6 +12,7 @@
 #include "benchmarks/in_memory_benchmarks.h"
 #include "benchmarks/distribution_benchmarks.h"
 #include <map>
+#include <malloc.h>
 
 void AlignedAllocTest(int argc, char **argv) {
     parlay::internal::timer timer;
@@ -38,7 +39,6 @@ void AlignedAllocTest(int argc, char **argv) {
     }
 }
 
-#include <malloc.h>
 void MmapTest(int argc, char **argv) {
     // This should remove most mmap calls but doesn't actually work according to strace.
     mallopt(M_MMAP_MAX, 0);
@@ -59,6 +59,16 @@ void MmapTest(int argc, char **argv) {
     std::cout << "Throughput: " << (double) (SIZE * reps * parlay::num_workers()) / timer.next_time() << "GB";
 }
 
+void MemoryBandwidthTest(int argc, char **argv) {
+    // Not a serious test. Just playing around with some very basic workloads.
+    size_t size = 1ULL << ParseLong(argv[2]);
+    auto index = ParseLong(argv[3]);
+    parlay::internal::timer timer;
+    timer.next("test");
+    parlay::sequence<int> seq(size / 4, (int)index);
+    timer.next("done");
+}
+
 std::map<std::string, std::function<void(int, char **)>> test_functions = {
         // IO
         {"write_only",            UnorderedWriteTest},
@@ -76,7 +86,8 @@ std::map<std::string, std::function<void(int, char **)>> test_functions = {
         {"scatter_gather_no_io",  ScatterGatherNoIOTest},
         // Misc
         {"aligned_alloc",         AlignedAllocTest},
-        {"mmap",                  MmapTest}};
+        {"mmap",                  MmapTest},
+        {"memory_bandwidth",      MemoryBandwidthTest}};
 
 int main(int argc, char **argv) {
     ParseGlobalArguments(argc, argv);
