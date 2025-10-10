@@ -1,4 +1,4 @@
-# PALID: Parallel Library for Asynchronous I/O Devices
+# PLAID: Parallel Library for Asynchronous I/O Devices
 
 This repository implements the external-memory primitives in [Scaling Parallel Algorithms to Massive Datasets using Multi-SSD Machines (SPAA 2025)](https://dl.acm.org/doi/10.1145/3694906.3743308).
 
