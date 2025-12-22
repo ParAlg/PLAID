@@ -12,7 +12,7 @@ declare -a disks=(
     # /dev/disk/by-path/pci-0000:08:00.0-nvme-1
     # /dev/disk/by-path/pci-0000:08:00.0-nvme-1-part2
     # /dev/disk/by-path/pci-0000:08:00.0-nvme-1-part3
-    "/dev/disk/by-path/pci-0000:23:00.0-nvme-1"
+    # "/dev/disk/by-path/pci-0000:23:00.0-nvme-1"
     "/dev/disk/by-path/pci-0000:2a:00.0-nvme-1"
     "/dev/disk/by-path/pci-0000:2b:00.0-nvme-1"
     "/dev/disk/by-path/pci-0000:2c:00.0-nvme-1"
