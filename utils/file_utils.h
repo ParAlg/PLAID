@@ -47,6 +47,9 @@ constexpr size_t AlignUp(size_t original) {
     return (original + O_DIRECT_MULTIPLE - 1) / O_DIRECT_MULTIPLE * O_DIRECT_MULTIPLE;
 }
 
+void Read(int fd, void* buffer, size_t read_size);
+void Write(int fd, const void *buffer, size_t write_size);
+
 void ReadFileOnce(const std::string &file_name, void* buffer, size_t offset);
 void ReadFileOnce(const std::string &file_name, void *buffer, size_t start, size_t read_size);
 

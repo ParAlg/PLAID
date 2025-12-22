@@ -254,3 +254,13 @@ inline size_t GetFileSize(const std::string &file_name) {
     SYSCALL(stat(file_name.c_str(), &stat_buf));
     return stat_buf.st_size;
 }
+
+void Read(int fd, void *buffer, size_t read_size) {
+    auto size = read(fd, buffer, read_size);
+    CHECK(size == (ssize_t)read_size);
+}
+
+void Write(int fd, const void *buffer, size_t write_size) {
+    auto size = write(fd, buffer, write_size);
+    CHECK(size == (ssize_t)write_size);
+}
