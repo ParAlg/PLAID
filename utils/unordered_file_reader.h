@@ -186,6 +186,20 @@ public:
         }
     }
 
+    /**
+     * Reset the reader for reuse after the previous Start() has finished
+     * draining all files. Joins workers, reopens the buffer queue, and
+     * leaves the allocator memory pool and `files` list intact so the next
+     * Start() doesn't reallocate or rediscover files.
+     */
+    void Reset() {
+        Wait();
+        worker_threads.clear();
+        active_threads = 0;
+        is_open = true;
+        buffer_queue.Reopen();
+    }
+
 private:
     // whether the file reader is actively running
     bool is_open = true;

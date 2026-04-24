@@ -8,6 +8,7 @@
 #include <queue>
 #include <mutex>
 #include <condition_variable>
+#include "absl/log/check.h"
 
 enum class QueueCode {
     FINISH = 0,
@@ -59,6 +60,14 @@ public:
         std::lock_guard<std::mutex> lock(mutex);
         open = false;
         reader_cond.notify_all();
+    }
+
+    // Re-open a queue that was previously Close()d so it can be reused.
+    // Caller must ensure the queue is drained before calling.
+    void Reopen() {
+        std::lock_guard<std::mutex> lock(mutex);
+        CHECK(queue.empty()) << "Reopen called with non-empty queue";
+        open = true;
     }
 
     bool IsEmptyUnsafe() {
