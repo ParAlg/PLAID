@@ -48,6 +48,20 @@ cc_binary(
 )
 
 cc_binary(
+    name = "random_io_bench",
+    srcs = ["random_io_bench.cpp"],
+    deps = [
+        "//:config",
+        "//utils:command_line",
+        "//utils:io_utils",
+        "//utils:logger",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@parlaylib//parlay/internal:get_time",
+    ],
+)
+
+cc_binary(
     name = "io_uring_test",
     srcs = ["io_uring_test.cpp"],
     linkopts = [

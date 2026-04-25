@@ -27,6 +27,12 @@ struct UnorderedReaderConfig {
     size_t queue_depth = 32;
     size_t buffer_queue_size = 1024;
 
+    // Optional: per-file active-chunk bitmap. If non-null, indexed by the
+    // FileInfo::file_index; each inner vector is a packed 64-bit bitset where
+    // bit i indicates whether chunk i of that file should be read. When set,
+    // workers skip inactive chunks (no read submitted, no buffer enqueued).
+    const std::vector<std::vector<uint64_t>>* active_chunks_per_file = nullptr;
+
     UnorderedReaderConfig() = default;
 
     UnorderedReaderConfig(size_t num_threads,
@@ -141,7 +147,8 @@ public:
             }
             worker_threads.push_back(
                     std::make_unique<std::thread>(RunFileReaderWorker, this, std::move(file_list),
-                                                  config.queue_depth, config.max_requests));
+                                                  config.queue_depth, config.max_requests,
+                                                  config.active_chunks_per_file));
         }
     }
 
@@ -218,9 +225,15 @@ private:
      */
     struct OpenedFile {
         int fd;
-        size_t bytes_completed = 0, bytes_issued = 0;
+        size_t bytes_issued = 0;        // next file offset to consider for issue
+        size_t chunks_active = 0;       // total chunks we plan to actually read
+        size_t chunks_completed = 0;    // active chunks whose CQE has been reaped
         size_t file_size;
         const size_t file_index;
+        // Optional per-file bitmap: bit i set => chunk i should be read.
+        // If null, every chunk is active.
+        const uint64_t* active_bits = nullptr;
+        size_t active_bits_words = 0;
 
         OpenedFile(const std::string &name, size_t file_size, size_t file_index)
                 : file_size(file_size), file_index(file_index) {
@@ -235,6 +248,29 @@ private:
         ~OpenedFile() {
             SYSCALL(close(fd));
         }
+
+        // Total number of chunks the file would have (rounded up).
+        inline size_t num_chunks() const {
+            return (file_size + READ_SIZE - 1) / READ_SIZE;
+        }
+
+        inline bool chunk_active(size_t idx) const {
+            if (active_bits == nullptr) return true;
+            size_t w = idx >> 6;
+            if (w >= active_bits_words) return false;
+            return (active_bits[w] >> (idx & 63)) & 1ULL;
+        }
+
+        // Advance bytes_issued past inactive chunks. Returns true iff the
+        // chunk at the (new) bytes_issued is active and within file bounds.
+        inline bool advance_to_active() {
+            while (bytes_issued < file_size) {
+                size_t idx = bytes_issued / READ_SIZE;
+                if (chunk_active(idx)) return true;
+                bytes_issued += std::min((size_t) READ_SIZE, file_size - bytes_issued);
+            }
+            return false;
+        }
     };
 
     struct ReadRequest {
@@ -246,14 +282,38 @@ private:
     static void RunFileReaderWorker(UnorderedFileReader *reader,
                                     std::vector<FileInfo> &&all_files,
                                     const size_t io_uring_size,
-                                    const size_t max_outstanding_requests) {
+                                    const size_t max_outstanding_requests,
+                                    const std::vector<std::vector<uint64_t>>* active_chunks_per_file) {
         struct io_uring ring;
         SYSCALL(io_uring_queue_init(io_uring_size, &ring, IORING_SETUP_SINGLE_ISSUER));
 
         std::deque<OpenedFile *> available_files;
         std::vector<OpenedFile *> completed_files;
         for (auto &file: all_files) {
-            available_files.push_back(new OpenedFile(file));
+            auto *f = new OpenedFile(file);
+            if (active_chunks_per_file != nullptr &&
+                file.file_index < active_chunks_per_file->size()) {
+                const auto &bits = (*active_chunks_per_file)[file.file_index];
+                f->active_bits = bits.data();
+                f->active_bits_words = bits.size();
+            }
+            // Count active chunks to know the completion target. With no
+            // bitmap supplied this is just the chunk count of the file.
+            size_t total = f->num_chunks();
+            if (f->active_bits == nullptr) {
+                f->chunks_active = total;
+            } else {
+                size_t cnt = 0;
+                for (size_t c = 0; c < total; ++c) {
+                    if (f->chunk_active(c)) cnt++;
+                }
+                f->chunks_active = cnt;
+            }
+            if (f->chunks_active == 0) {
+                completed_files.push_back(f);
+            } else {
+                available_files.push_back(f);
+            }
         }
 
         size_t outstanding_requests = 0;
@@ -280,8 +340,8 @@ private:
                                  request->file->file_index,
                                  request->offset / sizeof(T));
                     auto *file = request->file;
-                    file->bytes_completed += request->read_size;
-                    if (file->bytes_completed == file->file_size) {
+                    file->chunks_completed++;
+                    if (file->chunks_completed == file->chunks_active) {
                         completed_files.push_back(file);
                     }
                     available_requests.push_back(request);
@@ -294,11 +354,18 @@ private:
             }
             // keep submitting new read requests to the io_uring until we are about to exceed to max size of the buffer
             while (!available_requests.empty() && !available_files.empty()) {
-                auto request = available_requests.back();
-                available_requests.pop_back();
-
                 auto file = available_files.front();
                 available_files.pop_front();
+
+                if (!file->advance_to_active()) {
+                    // No more active chunks to issue. Outstanding completions
+                    // will mark this file complete via the reap path. Don't
+                    // push it back to available_files.
+                    continue;
+                }
+
+                auto request = available_requests.back();
+                available_requests.pop_back();
                 request->file = file;
                 request->offset = file->bytes_issued;
                 auto read_size = std::min(READ_SIZE, file->file_size - file->bytes_issued);
@@ -319,8 +386,8 @@ private:
                 io_uring_submit(&ring);
 
                 file->bytes_issued += read_size;
-                // keep reusing this file if it's not done
-                if (file->bytes_issued != file->file_size) {
+                // keep reusing this file if it may have more active chunks left
+                if (file->bytes_issued < file->file_size) {
                     available_files.push_back(file);
                 }
                 outstanding_requests++;
