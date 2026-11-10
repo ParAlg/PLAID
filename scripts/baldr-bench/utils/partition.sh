@@ -12,7 +12,7 @@ for disk in "${disks[@]}"; do
     if [ "$1" = "part" ]; then
         echo "Partitioning $source into $parted"
         parted "$source" mklabel gpt mkpart P1 xfs 0% 100% -s
-        sudo mkfs.xfs "$parted"
+        sudo mkfs.xfs -f "$parted"
     elif [ "$1" = "unpart" ]; then
         echo "Destorying the partition at $source"
         parted "$source" rm 1
